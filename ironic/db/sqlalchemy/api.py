@@ -387,7 +387,7 @@ def _paginate_query(model, limit=None, marker=None, sort_key=None,
                 return []
             if return_base_tuple:
                 # The caller expects a tuple, lets just give it to them.
-                return res
+                return [tuple(r) for r in res]
             # Everything is a tuple in a resultset from the unified interface
             # but for objects, our model expects just object access,
             # so we extract and return them.
@@ -585,16 +585,9 @@ class Connection(api.Connection):
         # If we are not using sorting, or any other query magic,
         # we could likely just do a query execution and
         # prepare the tuple responses.
-        results = _paginate_query(models.Node, limit, marker,
-                                  sort_key, sort_dir, query,
-                                  return_base_tuple=True)
-        # Need to copy the data to close out the _paginate_query
-        # object.
-        new_result = [tuple([ent for ent in r]) for r in results]
-        # Explicitly free results so we don't hang on to it.
-        del results
-
-        return new_result
+        return _paginate_query(models.Node, limit, marker,
+                               sort_key, sort_dir, query,
+                               return_base_tuple=True)
 
     def get_node_list(self, filters=None, limit=None, marker=None,
                       sort_key=None, sort_dir=None, fields=None):
@@ -714,14 +707,17 @@ class Connection(api.Connection):
                 values(reservation=tag).
                 execution_options(synchronize_session=False))
             session.flush()
-        node = self._get_node_reservation(node.id)
         # NOTE(TheJulia): In SQLAlchemy 2.0 style, we don't
         # magically get a changed node as they moved from the
         # many ways to do things to singular ways to do things.
         if res.rowcount != 1:
             # Nothing updated and node exists. Must already be
-            # locked.
-            raise exception.NodeLocked(node=node.uuid, host=node.reservation)
+            # locked. Identify who holds it and log.
+            if utils.is_ironic_using_sqlite():
+                lock_holder = CONF.hostname
+            else:
+                lock_holder = self._get_node_reservation(node.id).reservation
+            raise exception.NodeLocked(node=node.uuid, host=lock_holder)
 
     @oslo_db_api.retry_on_deadlock
     def reserve_node(self, tag, node_id):
@@ -1481,7 +1477,8 @@ class Connection(api.Connection):
                 result = session.query(
                     field
                 ).filter(models.Conductor.online.is_(False))
-        return [row[0] for row in result]
+            result = [row[0] for row in result]
+        return result
 
     def get_online_conductors(self):
         with _session_for_read() as session:

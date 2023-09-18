@@ -895,9 +895,6 @@ class TestPXEUtils(db_base.DbTestCase):
             expected_info = [{'opt_name': '67',
                               'opt_value': bootfile,
                               'ip_version': ip_version},
-                             {'opt_name': '210',
-                              'opt_value': '/tftp-path/',
-                              'ip_version': ip_version},
                              {'opt_name': '66',
                               'opt_value': '192.0.2.1',
                               'ip_version': ip_version},
@@ -2165,8 +2162,6 @@ class iPXEBuildConfigOptionsTestCase(db_base.DbTestCase):
         if iso_boot:
             self.node.instance_info = {'boot_iso': 'http://test.url/file.iso'}
             self.node.save()
-            print(expected_options)
-            print(image_info)
             iso_url = os.path.join(http_url, self.node.uuid, 'boot_iso')
             expected_options.update(
                 {
