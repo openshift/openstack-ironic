@@ -13,6 +13,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+# TEST CI
 """Conduct all activity related to bare-metal deployments.
 
 A single instance of :py:class:`ironic.conductor.manager.ConductorManager` is
