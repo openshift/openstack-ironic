@@ -14,6 +14,7 @@
 
 from oslo_log import log
 
+from ironic.common import async_steps
 from ironic.common import exception
 from ironic.common.i18n import _
 from ironic.common import states
@@ -86,8 +87,6 @@ def do_node_service(task, service_steps=None, disable_ramdisk=False):
         return utils.servicing_error_handler(task, msg)
 
     steps = node.driver_internal_info.get('service_steps', [])
-    if not steps:
-        _tear_down_node_service(task, disable_ramdisk=disable_ramdisk)
     step_index = 0 if steps else None
     do_next_service_step(task, step_index, disable_ramdisk=disable_ramdisk)
 
@@ -156,13 +155,14 @@ def do_next_service_step(task, step_index, disable_ramdisk=None):
 
         except Exception as e:
             if isinstance(e, exception.AgentConnectionFailed):
-                if task.node.driver_internal_info.get('service_reboot'):
+                if task.node.driver_internal_info.get(
+                        async_steps.SERVICING_REBOOT):
                     LOG.info('Agent is not yet running on node %(node)s '
                              'after service reboot, waiting for agent to '
                              'come up to run next service step %(step)s.',
                              {'node': node.uuid, 'step': step})
-                    node.set_driver_internal_info('skip_current_service_step',
-                                                  False)
+                    node.set_driver_internal_info(
+                        async_steps.SKIP_CURRENT_SERVICE_STEP, False)
                     task.process_event('wait')
                     return
             if isinstance(e, exception.AgentInProgress):
@@ -172,7 +172,7 @@ def do_next_service_step(task, step_index, disable_ramdisk=None):
                          {'node': task.node.uuid,
                           'error': e})
                 node.set_driver_internal_info(
-                    'skip_current_service_step', False)
+                    async_steps.SKIP_CURRENT_SERVICE_STEP, False)
                 task.process_event('wait')
                 return
 

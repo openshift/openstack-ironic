@@ -25,6 +25,7 @@ from oslo_utils import excutils
 from oslo_utils import fileutils
 from oslo_utils import strutils
 
+from ironic.common import async_steps
 from ironic.common import exception
 from ironic.common import faults
 from ironic.common.glance_service import service_utils
@@ -829,21 +830,15 @@ def tear_down_inband_service(task):
 
     task.driver.boot.clean_up_ramdisk(task)
 
-    power_state_to_restore = manager_utils.power_on_node_if_needed(task)
-
     if not service_failure:
-        manager_utils.restore_power_state_if_needed(
-            task, power_state_to_restore)
-
         with manager_utils.power_state_for_network_configuration(task):
             task.driver.network.remove_servicing_network(task)
             task.driver.network.configure_tenant_networks(task)
-        task.driver.boot.prepare_instance(task)
-        manager_utils.restore_power_state_if_needed(
-            task, power_state_to_restore)
 
-        # Change the task instead of return the state.
-        task.process_event('done')
+        task.driver.boot.prepare_instance(task)
+        # prepare_instance does not power on the node, the deploy interface is
+        # normally responsible for that.
+        manager_utils.node_power_action(task, states.POWER_ON)
 
 
 def get_image_instance_info(node):
@@ -1457,74 +1452,9 @@ parse_instance_info_capabilities = (
     utils.parse_instance_info_capabilities
 )
 
-
-def get_async_step_return_state(node):
-    """Returns state based on operation (cleaning/deployment) being invoked
-
-    :param node: an ironic node object.
-    :returns: states.CLEANWAIT if cleaning operation in progress
-              or states.DEPLOYWAIT if deploy operation in progress.
-    """
-    return states.CLEANWAIT if node.clean_step else states.DEPLOYWAIT
-
-
-def _check_agent_token_prior_to_agent_reboot(node):
-    """Removes the agent token if it was not pregenerated.
-
-    Removal of the agent token in cases where it is not pregenerated
-    is a vital action prior to rebooting the agent, as without doing
-    so the agent will be unable to establish communication with
-    the ironic API after the reboot. Effectively locking itself out
-    as in cases where the value is not pregenerated, it is not
-    already included in the payload and must be generated again
-    upon lookup.
-
-    :param node: The Node object.
-    """
-    if not node.driver_internal_info.get('agent_secret_token_pregenerated',
-                                         False):
-        node.del_driver_internal_info('agent_secret_token')
-
-
-def set_async_step_flags(node, reboot=None, skip_current_step=None,
-                         polling=None):
-    """Sets appropriate reboot flags in driver_internal_info based on operation
-
-    :param node: an ironic node object.
-    :param reboot: Boolean value to set for node's driver_internal_info flag
-        cleaning_reboot or deployment_reboot based on cleaning or deployment
-        operation in progress. If it is None, corresponding reboot flag is
-        not set in node's driver_internal_info.
-    :param skip_current_step: Boolean value to set for node's
-        driver_internal_info flag skip_current_clean_step or
-        skip_current_deploy_step based on cleaning or deployment operation
-        in progress. If it is None, corresponding skip step flag is not set
-        in node's driver_internal_info.
-    :param polling: Boolean value to set for node's driver_internal_info flag
-        deployment_polling or cleaning_polling. If it is None, the
-        corresponding polling flag is not set in the node's
-        driver_internal_info.
-    """
-    if node.clean_step:
-        reboot_field = 'cleaning_reboot'
-        skip_field = 'skip_current_clean_step'
-        polling_field = 'cleaning_polling'
-    else:
-        reboot_field = 'deployment_reboot'
-        skip_field = 'skip_current_deploy_step'
-        polling_field = 'deployment_polling'
-
-    if reboot is not None:
-        node.set_driver_internal_info(reboot_field, reboot)
-        if reboot:
-            # If rebooting, we must ensure that we check and remove
-            # an agent token if necessary.
-            _check_agent_token_prior_to_agent_reboot(node)
-    if skip_current_step is not None:
-        node.set_driver_internal_info(skip_field, skip_current_step)
-    if polling is not None:
-        node.set_driver_internal_info(polling_field, polling)
-    node.save()
+# NOTE(dtantsur): backward compatibility, do not use
+get_async_step_return_state = async_steps.get_return_state
+set_async_step_flags = async_steps.set_node_flags
 
 
 def prepare_agent_boot(task):
@@ -1555,7 +1485,23 @@ def reboot_to_finish_step(task, timeout=None):
         prepare_agent_boot(task)
 
     manager_utils.node_power_action(task, states.REBOOT, timeout)
-    return get_async_step_return_state(task.node)
+    return async_steps.get_return_state(task.node)
+
+
+def step_error_handler(task, logmsg, errmsg=None):
+    """Run the correct handler for the current step.
+
+    :param task: a TaskManager instance.
+    :param logmsg: Message to be logged.
+    :param errmsg: Message for the user. Optional, if not provided `logmsg` is
+        used.
+    """
+    if task.node.provision_state in [states.CLEANING, states.CLEANWAIT]:
+        manager_utils.cleaning_error_handler(task, logmsg, errmsg=errmsg)
+    elif task.node.provision_state in [states.DEPLOYING, states.DEPLOYWAIT]:
+        manager_utils.deploying_error_handler(task, logmsg, errmsg=errmsg)
+    elif task.node.provision_state in [states.SERVICING, states.SERVICEWAIT]:
+        manager_utils.servicing_error_handler(task, logmsg, errmsg=errmsg)
 
 
 def get_root_device_for_deploy(node):
