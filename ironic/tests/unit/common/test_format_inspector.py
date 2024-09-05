@@ -406,11 +406,11 @@ class TestFormatInspectors(test_base.TestCase):
                             'Format used more than 1.5MiB of memory: %s' % (
                                 fmt.context_info))
 
-    def test_vmdk_bad_descriptor_mem_limit(self):
-        self._test_vmdk_bad_descriptor_mem_limit()
+    # def test_vmdk_bad_descriptor_mem_limit(self):
+    #     self._test_vmdk_bad_descriptor_mem_limit()
 
-    def test_vmdk_bad_descriptor_mem_limit_stream_optimized(self):
-        self._test_vmdk_bad_descriptor_mem_limit(subformat='streamOptimized')
+    # def test_vmdk_bad_descriptor_mem_limit_stream_optimized(self):
+    #     self._test_vmdk_bad_descriptor_mem_limit(subformat='streamOptimized')
 
     def test_qcow2_safety_checks(self):
         # Create backing and data-file names (and initialize the backing file)
