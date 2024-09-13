@@ -851,3 +851,7 @@ class ImageRefIsARedirect(IronicException):
             message=msg,
             image_ref=image_ref,
             redirect_url=redirect_url)
+
+
+class InvalidImage(ImageUnacceptable):
+    _msg_fmt = _("The requested image is not valid for use.")
