@@ -1521,8 +1521,6 @@ class ConductorManager(base_manager.BaseConductorManager):
                                                  states.CLEANHOLD,
                                                  states.DEPLOYWAIT,
                                                  states.DEPLOYHOLD,
-                                                 states.SERVICEWAIT,
-                                                 states.SERVICEHOLD,
                                                  states.SERVICEFAIL)):
                 self._do_abort(task)
                 return
