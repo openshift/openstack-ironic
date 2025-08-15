@@ -27,17 +27,8 @@ from ironic.drivers import base
 from ironic.drivers.modules import inspect_utils
 from ironic.drivers.modules.redfish import utils as redfish_utils
 from ironic.drivers import utils as drivers_utils
-from ironic import objects
 
 LOG = log.getLogger(__name__)
-
-CPU_ARCH_MAP = {
-    sushy.PROCESSOR_ARCH_x86: 'x86_64',
-    sushy.PROCESSOR_ARCH_IA_64: 'ia64',
-    sushy.PROCESSOR_ARCH_ARM: 'arm',
-    sushy.PROCESSOR_ARCH_MIPS: 'mips',
-    sushy.PROCESSOR_ARCH_OEM: 'oem'
-}
 
 PROCESSOR_INSTRUCTION_SET_MAP = {
     sushy.InstructionSet.ARM_A32: 'arm',
@@ -57,6 +48,14 @@ BOOT_MODE_MAP = {
 
 
 class RedfishInspect(base.InspectInterface):
+
+    def __init__(self):
+        super().__init__()
+        enabled_hooks = [x.strip()
+                         for x in CONF.redfish.inspection_hooks.split(',')
+                         if x.strip()]
+        self.hooks = inspect_utils.validate_inspection_hooks("redfish",
+                                                             enabled_hooks)
 
     def get_properties(self):
         """Return the properties of the interface.
@@ -106,7 +105,15 @@ class RedfishInspect(base.InspectInterface):
             inspected_properties['memory_mb'] = memory
             inventory['memory'] = {'physical_mb': memory}
 
-        self._get_processor_info(task, system, inspected_properties, inventory)
+        # match the inventory data of ironic-inspector / ironic-python-agent
+        # to make existing inspection hooks and rules work by defaulting
+        # the values
+        inventory['cpu'] = {
+            'count': 0,
+            'architecture': '',
+        }
+        proc_info = self._get_processor_info(task, system)
+        inventory['cpu'].update(proc_info)
 
         # TODO(etingof): should we respect root device hints here?
         local_gb = self._detect_local_gb(task, system)
@@ -163,6 +170,22 @@ class RedfishInspect(base.InspectInterface):
             inventory['boot'] = {'current_boot_mode':
                                  BOOT_MODE_MAP[system.boot.mode]}
 
+        self._create_ports(task, system)
+
+        pxe_port_macs = self._get_pxe_port_macs(task)
+        # existing data format only allows one mac so use that for now
+        if pxe_port_macs:
+            inventory['boot']['pxe_interface'] = pxe_port_macs[0]
+
+        plugin_data = {}
+
+        inspect_utils.run_inspection_hooks(task, inventory, plugin_data,
+                                           self.hooks, None)
+        inspect_utils.store_inspection_data(task.node,
+                                            inventory,
+                                            plugin_data,
+                                            task.context)
+
         valid_keys = self.ESSENTIAL_PROPERTIES
         missing_keys = valid_keys - set(inspected_properties)
         if missing_keys:
@@ -174,40 +197,10 @@ class RedfishInspect(base.InspectInterface):
 
         task.node.properties = inspected_properties
         task.node.save()
-
         LOG.debug("Node properties for %(node)s are updated as "
                   "%(properties)s", {'properties': inspected_properties,
                                      'node': task.node.uuid})
 
-        self._create_ports(task, system)
-
-        pxe_port_macs = self._get_pxe_port_macs(task)
-        if pxe_port_macs is None:
-            LOG.warning("No PXE enabled NIC was found for node "
-                        "%(node_uuid)s.", {'node_uuid': task.node.uuid})
-        elif CONF.inspector.update_pxe_enabled:
-            pxe_port_macs = [macs.lower() for macs in pxe_port_macs]
-
-            ports = objects.Port.list_by_node_id(task.context, task.node.id)
-            if ports:
-                for port in ports:
-                    is_baremetal_pxe_port = (port.address.lower()
-                                             in pxe_port_macs)
-                    if port.pxe_enabled != is_baremetal_pxe_port:
-                        port.pxe_enabled = is_baremetal_pxe_port
-                        port.save()
-                        LOG.info('Port %(port)s having %(mac_address)s '
-                                 'updated with pxe_enabled %(pxe)s for '
-                                 'node %(node_uuid)s during inspection',
-                                 {'port': port.uuid,
-                                  'mac_address': port.address,
-                                  'pxe': port.pxe_enabled,
-                                  'node_uuid': task.node.uuid})
-            else:
-                LOG.warning("No port information discovered "
-                            "for node %(node)s", {'node': task.node.uuid})
-        inspect_utils.store_inspection_data(task.node,
-                                            inventory, None, task.context)
         return states.MANAGEABLE
 
     def _create_ports(self, task, system):
@@ -296,27 +289,17 @@ class RedfishInspect(base.InspectInterface):
         """
         return None
 
-    def _get_processor_info(self, task, system, inspected_properties,
-                            inventory):
+    def _get_processor_info(self, task, system):
         # NOTE(JayF): Checking truthiness here is better than checking for None
         #             because if we have an empty list, we'll raise a
         #             ValueError.
-        if not system.processors:
-            return
-
         cpu = {}
+
+        if not system.processors:
+            return cpu
+
         if system.processors.summary:
-            cpus, arch = system.processors.summary
-            if cpus:
-                inspected_properties['cpus'] = cpus
-                cpu['count'] = cpus
-            if arch:
-                try:
-                    inspected_properties['cpu_arch'] = CPU_ARCH_MAP[arch]
-                except KeyError:
-                    LOG.warning("Unknown CPU arch %(arch)s discovered "
-                                "for node %(node)s", {'node': task.node.uuid,
-                                                      'arch': arch})
+            cpu['count'], _ = system.processors.summary
 
         processor = system.processors.get_members()[0]
 
@@ -324,8 +307,7 @@ class RedfishInspect(base.InspectInterface):
             cpu['model_name'] = str(processor.model)
         if processor.max_speed_mhz is not None:
             cpu['frequency'] = processor.max_speed_mhz
-        if processor.instruction_set is not None:
-            cpu['architecture'] = PROCESSOR_INSTRUCTION_SET_MAP[
-                processor.instruction_set]
+        cpu['architecture'] = PROCESSOR_INSTRUCTION_SET_MAP.get(
+            processor.instruction_set) or ''
 
-        inventory['cpu'] = cpu
+        return cpu
