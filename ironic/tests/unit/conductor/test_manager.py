@@ -2773,6 +2773,74 @@ class DoProvisioningActionTestCase(mgr_utils.ServiceSetUpMixin,
         self.assertEqual(states.CLEANWAIT, node.provision_state)
         self.assertEqual(states.AVAILABLE, node.target_provision_state)
 
+    def test_do_provision_action_abort_service_step_not_abortable_wait(self):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEWAIT,
+            target_provision_state=states.ACTIVE,
+            service_step={'step': 'foo', 'abortable': False})
+
+        self._start_service()
+        self.service.do_provisioning_action(self.context, node.uuid, 'abort')
+        node.refresh()
+        # Assert the current service step was marked to be aborted later
+        self.assertIn('abort_after', node.service_step)
+        self.assertTrue(node.service_step['abort_after'])
+        # Make sure things stays as it was before
+        self.assertEqual(states.SERVICEWAIT, node.provision_state)
+        self.assertEqual(states.ACTIVE, node.target_provision_state)
+
+    def test_do_provision_action_abort_service_step_not_abortable_hold(self):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEHOLD,
+            target_provision_state=states.ACTIVE,
+            service_step={'step': 'foo', 'abortable': False})
+
+        self._start_service()
+        self.service.do_provisioning_action(self.context, node.uuid, 'abort')
+        node.refresh()
+        # Assert the current service step was marked to be aborted later
+        self.assertIn('abort_after', node.service_step)
+        self.assertTrue(node.service_step['abort_after'])
+        # Make sure things stays as it was before
+        self.assertEqual(states.SERVICEHOLD, node.provision_state)
+        self.assertEqual(states.ACTIVE, node.target_provision_state)
+
+    @mock.patch('ironic.conductor.manager.ConductorManager._spawn_worker',
+                autospec=True)
+    def test_do_provision_action_abort_service_step_abortable_wait(
+            self, mock_spawn):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEWAIT,
+            target_provision_state=states.ACTIVE,
+            service_step={'step': 'foo', 'abortable': True})
+
+        self._start_service()
+        self.service.do_provisioning_action(self.context, node.uuid, 'abort')
+        node.refresh()
+        # Assert the abort was initiated immediately
+        mock_spawn.assert_called_with(
+            self.service, servicing.do_node_service_abort, mock.ANY)
+
+    @mock.patch('ironic.conductor.manager.ConductorManager._spawn_worker',
+                autospec=True)
+    def test_do_provision_action_abort_service_step_abortable_hold(
+            self, mock_spawn):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEHOLD,
+            target_provision_state=states.ACTIVE,
+            service_step={'step': 'foo', 'abortable': True})
+
+        self._start_service()
+        self.service.do_provisioning_action(self.context, node.uuid, 'abort')
+        node.refresh()
+        # Assert the abort was initiated immediately
+        mock_spawn.assert_called_with(
+            self.service, servicing.do_node_service_abort, mock.ANY)
+
     @mock.patch('ironic.conductor.manager.ConductorManager._spawn_worker',
                 autospec=True)
     def _do_provision_action_abort_from_cleanhold(self, mock_spawn,
@@ -2819,6 +2887,37 @@ class DoProvisioningActionTestCase(mgr_utils.ServiceSetUpMixin,
             mock.ANY,
             states.DEPLOYHOLD)
         self.assertNotIn('agent_url', node.driver_internal_info)
+
+    @mock.patch('ironic.conductor.manager.ConductorManager._spawn_worker',
+                autospec=True)
+    def test_do_provision_action_abort_from_servicefail(self, mock_spawn):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEFAIL,
+            target_provision_state=states.ACTIVE)
+
+        self._start_service()
+        self.service.do_provisioning_action(self.context, node.uuid, 'abort')
+        mock_spawn.assert_called_with(
+            self.service,
+            servicing.do_node_service_abort,
+            mock.ANY)
+
+    @mock.patch('ironic.conductor.manager.ConductorManager._spawn_worker',
+                autospec=True)
+    def test_do_provision_action_abort_from_servicefail_maintenance(
+            self, mock_spawn):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            provision_state=states.SERVICEFAIL,
+            target_provision_state=states.ACTIVE,
+            maintenance=True)
+
+        self._start_service()
+        self.assertRaises(
+            exception.InvalidState,
+            self.service.do_provisioning_action,
+            self.context, node.uuid, 'abort')
 
 
 @mgr_utils.mock_record_keepalive
