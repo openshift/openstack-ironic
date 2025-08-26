@@ -180,6 +180,15 @@ def cleanup_iso_image(task):
     """
     ImageHandler.unpublish_image_for_node(task.node, prefix='boot',
                                           suffix='.iso')
+    # Also clean up from NFS/CIFS shares if applicable
+    protocol = task.node.driver_internal_info.get('vmedia_transport_protocol')
+    if protocol:
+        name = _get_name(task.node, prefix='boot', suffix='.iso')
+        proto_upper = protocol.upper()
+        if proto_upper == 'NFS':
+            image_publisher.NFSPublisher().unpublish(name)
+        elif proto_upper in ('CIFS', 'SMB'):
+            image_publisher.CIFSPublisher().unpublish(name)
 
 
 def override_api_url(params):
@@ -380,11 +389,21 @@ def prepare_remote_image(task, image_url, file_name='boot.iso',
         # matter here) image.
         scheme = 'http'
 
+    # NFS and CIFS/SMB images cannot be downloaded locally by the conductor;
+    # they are accessed directly by the BMC. Reject local download source.
+    if download_source == 'local' and scheme in ('nfs', 'cifs', 'smb'):
+        raise exception.InvalidParameterValue(
+            _("image_download_source is set to 'local' but the image URL "
+              "%(url)s uses the %(scheme)s protocol which cannot be "
+              "downloaded by the conductor. Set image_download_source to "
+              "'http' or remove it to use the default.")
+            % {'url': image_url, 'scheme': scheme})
+
     if download_source != 'local':
-        if scheme in ('http', 'https'):
+        if scheme in ('http', 'https', 'nfs', 'cifs', 'smb'):
             return image_url
         LOG.debug("image_download_source set to %(download_source)s but "
-                  "the image is not an HTTP URL: %(image_url)s",
+                  "the image is not an HTTP/NFS/CIFS URL: %(image_url)s",
                   {"image_url": image_url, "download_source": download_source})
 
     img_handler = ImageHandler(task.node.driver)
@@ -519,9 +538,20 @@ def _prepare_iso_image(task, kernel_href, ramdisk_href,
                 inject_files=inject_files,
                 publisher_id=publisher_id)
 
-        node_http_url = task.node.driver_info.get("external_http_url")
-        image_url = img_handler.publish_image(
-            boot_iso_tmp_file, iso_object_name, node_http_url)
+        protocol = task.node.driver_internal_info.get(
+            'vmedia_transport_protocol')
+
+        if protocol and protocol.upper() in ('NFS', 'CIFS', 'SMB'):
+            if protocol.upper() == 'NFS':
+                publisher = image_publisher.NFSPublisher()
+            else:
+                publisher = image_publisher.CIFSPublisher()
+            image_url = publisher.publish(boot_iso_tmp_file,
+                                          iso_object_name)
+        else:
+            node_http_url = task.node.driver_info.get("external_http_url")
+            image_url = img_handler.publish_image(
+                boot_iso_tmp_file, iso_object_name, node_http_url)
 
     LOG.debug("Created ISO %(name)s in object store for node %(node)s, "
               "exposed as temporary URL "
