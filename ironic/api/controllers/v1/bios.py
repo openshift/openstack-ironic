@@ -17,7 +17,10 @@ from pecan import rest
 
 from ironic import api
 from ironic.api.controllers.v1 import utils as api_utils
+from ironic.api.controllers.v1 import versions
 from ironic.api import method
+from ironic.api.schemas.v1 import bios as schema
+from ironic.api import validation
 from ironic.common import args
 from ironic.common import exception
 from ironic.common import metrics_utils
@@ -65,7 +68,15 @@ class NodeBiosController(rest.RestController):
 
     @METRICS.timer('NodeBiosController.get_all')
     @method.expose()
+    @validation.api_version(min_version=versions.MINOR_40_BIOS_INTERFACE)
+    # TODO(stephenfin): We are currently using this for side-effects to e.g.
+    # convert a CSV string to an array or a string to an integer. We should
+    # probably rename this decorator or provide a separate, simpler decorator.
     @args.validate(fields=args.string_list, detail=args.boolean)
+    @validation.request_query_schema(schema.index_request_query, None, 73)
+    @validation.request_query_schema(schema.index_request_query_v74, 74)
+    @validation.response_body_schema(schema.index_response_body, None, 73)
+    @validation.response_body_schema(schema.index_response_body_v74, 74)
     def get_all(self, detail=None, fields=None):
         """List node bios settings."""
         node = api_utils.check_node_policy_and_retrieve(
@@ -85,7 +96,11 @@ class NodeBiosController(rest.RestController):
 
     @METRICS.timer('NodeBiosController.get_one')
     @method.expose()
-    @args.validate(setting_name=args.name)
+    @validation.api_version(min_version=versions.MINOR_40_BIOS_INTERFACE)
+    @validation.request_parameter_schema(schema.show_request_parameter)
+    @validation.request_query_schema(schema.show_request_query)
+    @validation.response_body_schema(schema.show_response_body, None, 73)
+    @validation.response_body_schema(schema.show_response_body_v74, 74)
     def get_one(self, setting_name):
         """Retrieve information about the given bios setting.
 

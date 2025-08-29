@@ -54,6 +54,8 @@ PORT_SCHEMA = {
         'uuid': {'type': ['string', 'null']},
         'name': {'type': ['string', 'null']},
         'description': {'type': ['string', 'null'], 'maxLength': 255},
+        'vendor': {'type': ['string', 'null'], 'maxLength': 32},
+        'category': {'type': ['string', 'null'], 'maxLength': 80},
     },
     'required': ['address'],
     'oneOf': [
@@ -78,6 +80,8 @@ PATCH_ALLOWED_FIELDS = [
     'pxe_enabled',
     'name',
     'description',
+    'vendor',
+    'category',
 ]
 
 PORT_VALIDATOR_EXTRA = args.dict_valid(
@@ -139,6 +143,12 @@ def hide_fields_in_newer_versions(port):
     # if requested version is < 1.97, hide description field.
     if not api_utils.allow_port_description():
         port.pop('description', None)
+    # if requested version is < 1.100, hide vendor field.
+    if not api_utils.allow_port_vendor():
+        port.pop('vendor', None)
+    # if requested version is < 1.101, hide category field.
+    if not api_utils.allow_port_category():
+        port.pop('category', None)
 
 
 def convert_with_links(rpc_port, fields=None, sanitize=True):
@@ -405,6 +415,12 @@ class PortsController(rest.RestController):
         if ('description' in fields
                 and not api_utils.allow_port_description()):
             raise exception.NotAcceptable()
+        if ('vendor' in fields
+                and not api_utils.allow_port_vendor()):
+            raise exception.NotAcceptable()
+        if ('category' in fields
+                and not api_utils.allow_port_category()):
+            raise exception.NotAcceptable()
 
     @METRICS.timer('PortsController.get_all')
     @method.expose()
@@ -573,7 +589,7 @@ class PortsController(rest.RestController):
         :raises: NotAcceptable, HTTPNotFound
         """
         if self.parent_node_ident or self.parent_portgroup_ident:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         rpc_port, rpc_node = api_utils.check_port_policy_and_retrieve(
             'baremetal:port:get', port_ident)
@@ -594,7 +610,7 @@ class PortsController(rest.RestController):
         :raises: NotAcceptable, HTTPNotFound, Conflict
         """
         if self.parent_node_ident or self.parent_portgroup_ident:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         # NOTE(lucasagomes): Create the node_id attribute on-the-fly
         #                    to satisfy the api -> rpc object
@@ -716,7 +732,7 @@ class PortsController(rest.RestController):
         :raises: NotAcceptable, HTTPNotFound
         """
         if self.parent_node_ident or self.parent_portgroup_ident:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         api_utils.patch_validate_allowed_fields(patch, PATCH_ALLOWED_FIELDS)
 
@@ -826,10 +842,10 @@ class PortsController(rest.RestController):
         """Delete a port.
 
         :param port_uuid: UUID of a port.
-        :raises: OperationNotPermitted, HTTPNotFound
+        :raises: MalformedRequestURI, HTTPNotFound
         """
         if self.parent_node_ident or self.parent_portgroup_ident:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         rpc_port, rpc_node = api_utils.check_port_policy_and_retrieve(
             'baremetal:port:delete', port_uuid)
