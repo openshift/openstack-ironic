@@ -568,7 +568,7 @@ bios_interface:
   type: string
 bios_setting_allowable_values:
   description: |
-    A list of allowable values, otherwise ``null``.
+    A list of allowable values. May be ``null``.
   in: body
   required: true
   type: array
@@ -598,21 +598,19 @@ bios_setting_min_length:
   type: integer
 bios_setting_name:
   description: |
-    The name of a Bios setting for a Node, eg. "virtualization".
+    The name of a Bios setting for a Node, eg. ``virtualization``.
   in: body
   required: true
   type: string
 bios_setting_read_only:
   description: |
-    This Bios setting is read only and can't be changed.
-    May be None.
+    This Bios setting is read only and can't be changed. May be ``null``.
   in: body
   required: true
   type: boolean
 bios_setting_reset_required:
   description: |
-    After setting this Bios setting a node reboot is required.
-    May be None.
+    After setting this Bios setting a node reboot is required. May be ``null``.
   in: body
   required: true
   type: boolean
@@ -1570,6 +1568,12 @@ port_address:
   in: body
   required: true
   type: string
+port_category:
+  description: |
+    Category of the network Port. Helps to further differentiate the Port.
+  in: body
+  required: false
+  type: string
 port_description:
   description: |
     Descriptive text about the network Port.
@@ -1579,6 +1583,12 @@ port_description:
 port_name:
   description: |
     The name assigned to the network Port.
+  in: body
+  required: false
+  type: string
+port_vendor:
+  description: |
+    Name of the hardware vendor of the network Port.
   in: body
   required: false
   type: string
@@ -1971,6 +1981,12 @@ req_port_address:
   in: body
   required: true
   type: string
+req_port_category:
+  description: |
+    Category of the network Port. Helps to further differentiate the Port.
+  in: body
+  required: false
+  type: string
 req_port_description:
   description: |
     Descriptive text about the network Port.
@@ -1980,6 +1996,12 @@ req_port_description:
 req_port_name:
   description: |
     The name assigned to the network Port.
+  in: body
+  required: false
+  type: string
+req_port_vendor:
+  description: |
+    Name of the hardware vendor of the network Port.
   in: body
   required: false
   type: string

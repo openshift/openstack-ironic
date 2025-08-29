@@ -46,7 +46,10 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
     # Version 1.10: Add name field
     # Version 1.11: Add node_uuid field
     # Version 1.12: Add description field
-    VERSION = '1.12'
+    # Version 1.13: Add vendor field
+    # Version 1.14: Mark multiple methods as remotable methods.
+    # Version 1.15: Add category field
+    VERSION = '1.15'
 
     dbapi = dbapi.get_instance()
 
@@ -67,6 +70,8 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
                                                   default=False),
         'name': object_fields.StringField(nullable=True),
         'description': object_fields.StringField(nullable=True),
+        'vendor': object_fields.StringField(nullable=True),
+        'category': object_fields.StringField(nullable=True),
     }
 
     def _convert_field_by_version(self, field_name, introduced_version,
@@ -120,6 +125,15 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         Version 1.10: remove name field for unsupported versions if
             remove_unavailable_fields is True.
 
+        Version 1.12: remove description for unsupported versions if
+            remove_unavailable_fields is True.
+
+        Version 1.13: remove vendor for unsupported versions if
+            remove_unavailable_fields is True.
+
+        Version 1.15: remove category for unsupported versions if
+            remove_unavailable_fields is True.
+
         :param target_version: the desired version of the object
         :param remove_unavailable_fields: True to remove fields that are
             unavailable in the target version; set this to True when
@@ -151,12 +165,14 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         # Convert the description field.
         self._convert_field_by_version('description', (1, 12), target_version,
                                        remove_unavailable_fields)
+        # Convert the vendor field.
+        self._convert_field_by_version('vendor', (1, 13), target_version,
+                                       remove_unavailable_fields)
+        # Convert the category field.
+        self._convert_field_by_version('category', (1, 15), target_version,
+                                       remove_unavailable_fields)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def get(cls, context, port_id):
         """Find a port.
 
@@ -180,11 +196,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         else:
             raise exception.InvalidIdentity(identity=port_id)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def get_by_id(cls, context, port_id):
         """Find a port based on its integer ID and return a Port object.
 
@@ -199,11 +211,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         port = cls._from_db_object(context, cls(), db_port)
         return port
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):
         """Find a port based on UUID and return a :class:`Port` object.
 
@@ -218,11 +226,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         port = cls._from_db_object(context, cls(), db_port)
         return port
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def get_by_address(cls, context, address, owner=None, project=None):
         """Find a port based on address and return a :class:`Port` object.
 
@@ -241,11 +245,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         port = cls._from_db_object(context, cls(), db_port)
         return port
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def get_by_name(cls, context, name):
         """Find a port based on name and return a :class:`Port` object.
 
@@ -260,11 +260,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         port = cls._from_db_object(context, cls(), db_port)
         return port
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def list(cls, context, limit=None, marker=None, sort_key=None,
              sort_dir=None, owner=None, project=None, conductor_groups=None,
              filters=None):
@@ -319,11 +315,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
                                                  filters=filters)
         return cls._from_db_object_list(context, db_ports)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def list_by_node_id(cls, context, node_id, limit=None, marker=None,
                         sort_key=None, sort_dir=None, owner=None,
                         project=None, filters=None):
@@ -351,11 +343,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
                                                   filters=filters)
         return cls._from_db_object_list(context, db_ports)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable_classmethod
-    @classmethod
+    @object_base.remotable_classmethod
     def list_by_portgroup_id(cls, context, portgroup_id, limit=None,
                              marker=None, sort_key=None, sort_dir=None,
                              owner=None, project=None, filters=None):
@@ -384,10 +372,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
                                                        filters=filters)
         return cls._from_db_object_list(context, db_ports)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable
+    @object_base.remotable
     def create(self, context=None):
         """Create a Port record in the DB.
 
@@ -409,10 +394,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         db_port = self.dbapi.get_port_by_id(db_port['id'])
         self._from_db_object(self._context, self, db_port)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable
+    @object_base.remotable
     def destroy(self, context=None):
         """Delete the Port from the DB.
 
@@ -428,10 +410,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         self.dbapi.destroy_port(self.uuid)
         self.obj_reset_changes()
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable
+    @object_base.remotable
     def save(self, context=None):
         """Save updates to this Port.
 
@@ -452,10 +431,7 @@ class Port(base.IronicObject, object_base.VersionedObjectDictCompat):
         updated_port = self.dbapi.update_port(self.uuid, updates)
         self._from_db_object(self._context, self, updated_port)
 
-    # NOTE(xek): We don't want to enable RPC on this call just yet. Remotable
-    # methods can be used in the future to replace current explicit RPC calls.
-    # Implications of calling new remote procedures should be thought through.
-    # @object_base.remotable
+    @object_base.remotable
     def refresh(self, context=None):
         """Loads updates for this Port.
 
@@ -526,7 +502,9 @@ class PortCRUDPayload(notification.NotificationPayloadBase):
     # Version 1.3: Add "is_smartnic" field
     # Version 1.4: Add "name" field
     # Version 1.5: Add "description" field
-    VERSION = '1.5'
+    # Version 1.6: Add "vendor" field
+    # Version 1.7: Add "category" field
+    VERSION = '1.7'
 
     SCHEMA = {
         'address': ('port', 'address'),
@@ -540,6 +518,8 @@ class PortCRUDPayload(notification.NotificationPayloadBase):
         'is_smartnic': ('port', 'is_smartnic'),
         'name': ('port', 'name'),
         'description': ('port', 'description'),
+        'vendor': ('port', 'vendor'),
+        'category': ('port', 'category'),
     }
 
     fields = {
@@ -558,6 +538,8 @@ class PortCRUDPayload(notification.NotificationPayloadBase):
                                                   default=False),
         'name': object_fields.StringField(nullable=True),
         'description': object_fields.StringField(nullable=True),
+        'vendor': object_fields.StringField(nullable=True),
+        'category': object_fields.StringField(nullable=True),
     }
 
     def __init__(self, port, node_uuid, portgroup_uuid):

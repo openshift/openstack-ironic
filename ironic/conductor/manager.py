@@ -41,6 +41,7 @@ notifying Neutron of a change, etc.
 """
 
 import collections
+import datetime
 import queue
 import time
 
@@ -62,6 +63,7 @@ from ironic.common import network
 from ironic.common import nova
 from ironic.common import rpc
 from ironic.common import states
+from ironic.common import utils as common_utils
 from ironic.conductor import allocations
 from ironic.conductor import base_manager
 from ironic.conductor import cleaning
@@ -1666,7 +1668,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         # (through to its DB API call) so that we can eliminate our call
         # and first set of checks below.
 
-        while not self._shutdown:
+        while not self._shutdown.is_set():
             try:
                 (node_uuid, driver, conductor_group,
                  node_id) = nodes.get_nowait()
@@ -2807,7 +2809,7 @@ class ConductorManager(base_manager.BaseConductorManager):
     @METRICS.timer('ConductorManager._sensors_nodes_task')
     def _sensors_nodes_task(self, context, nodes):
         """Sends sensors data for nodes from synchronized queue."""
-        while not self._shutdown:
+        while not self._shutdown.is_set():
             try:
                 (node_uuid, driver, conductor_group,
                  instance_uuid) = nodes.get_nowait()
@@ -3527,6 +3529,11 @@ class ConductorManager(base_manager.BaseConductorManager):
         try:
             # NOTE(danms): Keep the getattr inside the try block since
             # a missing method is really a client problem
+            # NOTE(TheJulia): Explicitly set the indirection_api to None
+            # because we don't want to recurse into calling ourselves as
+            # a side-effect in single process mode -- i.e. if we have a
+            # request on this end, we've already routed through the layers.
+            target.indirection_api = None
             return getattr(target, method)(context, *args, **kwargs)
         except Exception:
             # NOTE(danms): This is oslo.messaging fu. ExpectedException()
@@ -3834,6 +3841,116 @@ class ConductorManager(base_manager.BaseConductorManager):
             LOG.error('Encountered error while cleaning node '
                       'history records: %s', e)
 
+    @METRICS.timer('ConductorManager.cleanup_stale_conductors')
+    @periodics.periodic(
+        spacing=CONF.conductor.conductor_cleanup_interval,
+        enabled=CONF.conductor.conductor_cleanup_interval > 0
+    )
+    def cleanup_stale_conductors(self, context):
+        """Periodically clean up stale conductors from the database.
+
+        This task removes conductors that have been offline for longer than
+        the configured timeout period. This helps prevent accumulation of
+        stale conductor records in the database.
+        """
+        try:
+            cleanup_timeout = CONF.conductor.conductor_cleanup_timeout
+            heartbeat_timeout = CONF.conductor.heartbeat_timeout
+
+            if heartbeat_timeout <= 0:
+                LOG.warning(
+                    'Skipping stale conductor cleanup due to invalid '
+                    'configuration: heartbeat_timeout is invalid (%s).',
+                    heartbeat_timeout
+                )
+                return
+
+            # We require conductor_cleanup_timeout to be at least 3x
+            # heartbeat_timeout to provide a significant safety margin.
+            # This ensures that active conductors won't be mistakenly
+            # removed from the database.
+            min_required = heartbeat_timeout * 3
+
+            if cleanup_timeout < min_required:
+                error_msg = _(
+                    'Skipping stale conductor cleanup due to invalid '
+                    'configuration: [conductor]conductor_cleanup_timeout '
+                    '(%(cleanup_timeout)s) must be at least 3x '
+                    '[conductor]heartbeat_timeout (%(heartbeat_timeout)s) '
+                    '(recommended minimum: %(min_required)s). This is '
+                    'required to prevent active conductors from being '
+                    'mistakenly removed.') % {
+                        'cleanup_timeout': cleanup_timeout,
+                        'heartbeat_timeout': heartbeat_timeout,
+                        'min_required': min_required}
+                LOG.warning(error_msg)
+                return
+
+            self._cleanup_stale_conductors(context)
+        except Exception as e:
+            LOG.error(
+                'Encountered error while cleaning up stale conductors: %s', e)
+
+    def _cleanup_stale_conductors(self, context):
+        """Clean up stale conductors from the database.
+
+        :param context: request context.
+        """
+        timeout = CONF.conductor.conductor_cleanup_timeout
+        batch_size = CONF.conductor.conductor_cleanup_batch_size
+
+        # Get conductors that have been offline for longer than the timeout
+        if not common_utils.is_ironic_using_sqlite():
+
+            # For non-SQLite databases, we need to check the updated_at
+            # timestamp because the database may be shared by multiple
+            # conductors and we want to avoid deleting records for conductors
+            # that may still be alive but have not updated their heartbeat
+            # recently enough.
+            limit = (timeutils.utcnow() - datetime.timedelta(seconds=timeout))
+            stale_conductors = self.dbapi.get_offline_conductors()
+
+            # Filter by timestamp
+            conductors_to_delete = []
+            for hostname in stale_conductors:
+                try:
+                    conductor = objects.Conductor.get_by_hostname(
+                        context, hostname, online=None)
+                    if conductor.updated_at < limit:
+                        conductors_to_delete.append(hostname)
+                        if len(conductors_to_delete) >= batch_size:
+                            break
+                except exception.ConductorNotFound:
+                    # Conductor was already deleted, skip
+                    continue
+        else:
+            # For SQLite, just get offline conductors
+            stale_conductors = self.dbapi.get_offline_conductors()
+            conductors_to_delete = stale_conductors[:batch_size]
+
+        if not conductors_to_delete:
+            return
+
+        LOG.info('Cleaning up %(count)d stale conductors: %(conductors)s',
+                 {'count': len(conductors_to_delete),
+                  'conductors': conductors_to_delete})
+
+        deleted_count = 0
+        for hostname in conductors_to_delete:
+            try:
+                self.dbapi.delete_conductor(hostname)
+                deleted_count += 1
+            except exception.ConductorNotFound:
+                # Conductor was already deleted by another process
+                continue
+            except Exception as e:
+                LOG.error('Failed to delete conductor %(hostname)s: %(error)s',
+                          {'hostname': hostname, 'error': e})
+
+        if deleted_count > 0:
+            LOG.info('Successfully cleaned up %(count)d stale conductors',
+                     {'count': deleted_count})
+
     def _manage_node_history(self, context):
         """Periodic task to keep the node history tidy."""
         max_batch = CONF.conductor.node_history_cleanup_batch_count
@@ -4078,6 +4195,13 @@ class ConductorManager(base_manager.BaseConductorManager):
         with task_manager.acquire(context, node_id, shared=False,
                                   purpose='attaching virtual media') as task:
             task.driver.management.validate(task)
+
+            if (task.node.maintenance
+                    and task.node.fault == faults.POWER_FAILURE):
+                raise exception.TemporaryFailure(
+                    'Unable to attach virtual media for node %s due to power '
+                    'failure state' % task.node.uuid)
+
             # Starting new operation, so clear the previous error.
             # We'll be putting an error here soon if we fail task.
             task.node.last_error = None
@@ -4113,6 +4237,13 @@ class ConductorManager(base_manager.BaseConductorManager):
         with task_manager.acquire(context, node_id, shared=False,
                                   purpose='detaching virtual media') as task:
             task.driver.management.validate(task)
+
+            if (task.node.maintenance
+                    and task.node.fault == faults.POWER_FAILURE):
+                raise exception.TemporaryFailure(
+                    'Unable to detach virtual media for node %s due to power '
+                    'failure state' % task.node.uuid)
+
             # Starting new operation, so clear the previous error.
             # We'll be putting an error here soon if we fail task.
             task.node.last_error = None
@@ -4191,9 +4322,14 @@ def handle_sync_power_state_max_retries_exceeded(task, actual_power_state,
     utils.node_history_record(task.node, event=msg,
                               event_type=states.MONITORING,
                               error=True)
-    node.maintenance = True
-    node.maintenance_reason = msg
-    node.fault = faults.POWER_FAILURE
+
+    # Only set maintenance and fault due to power sync failure if the node
+    # was not already placed into maintenance (e.g., by an administrator).
+    # This avoids auto-clearing admin-set maintenance during recovery.
+    if not node.maintenance:
+        node.maintenance = True
+        node.maintenance_reason = msg
+        node.fault = faults.POWER_FAILURE
     node.save()
     if old_power_state != actual_power_state:
         if node.instance_uuid:
