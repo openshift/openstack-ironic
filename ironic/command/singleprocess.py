@@ -17,9 +17,8 @@ from oslo_log import log
 from oslo_service import service
 
 from ironic.command import conductor as conductor_cmd
+from ironic.command import utils
 from ironic.common import service as ironic_service
-from ironic.common import wsgi_service
-from ironic.conductor import local_rpc
 from ironic.conductor import rpc_service
 from ironic.console import novncproxy_service
 
@@ -40,27 +39,33 @@ def main():
     # Parse config file and command line options, then start logging
     ironic_service.prepare_service('ironic', sys.argv)
 
-    local_rpc.configure()
-
-    launcher = service.ServiceLauncher(CONF, restart_method='mutate')
+    # Choose the launcher based upon if vnc is enabled or not.
+    # The VNC proxy has to be run in the parent process, not
+    # a sub-process.
+    launcher = service.ServiceLauncher(CONF, restart_method='mutate',
+                                       no_fork=CONF.vnc.enabled)
 
     mgr = rpc_service.RPCService(CONF.host,
                                  'ironic.conductor.manager',
-                                 'ConductorManager')
+                                 'ConductorManager',
+                                 embed_api=True)
     conductor_cmd.issue_startup_warnings(CONF)
     launcher.launch_service(mgr)
 
-    # NOTE(dtantsur): handling start-up failures before launcher.wait() helps
-    # notify systemd about them. Otherwise the launcher will report successful
-    # service start-up before checking the threads.
-    mgr.wait_for_start()
-
-    wsgi = wsgi_service.WSGIService('ironic_api', CONF.api.enable_ssl_api)
-    launcher.launch_service(wsgi)
-
+    # NOTE(TheJulia): By default, vnc is disabled, and depending on that
+    # overall process behavior will change. i.e. we're not going to force
+    # single process which breaks systemd process launch detection.
+    # Which is because you cannot directly invoke multiple services
+    # with different launchers.
     if CONF.vnc.enabled:
         # Build and start the websocket proxy
+        # NOTE(TheJulia): Single-process doesn't really *need*
+        # the vnc proxy per stevebaker.
         novncproxy = novncproxy_service.NoVNCProxyService()
         launcher.launch_service(novncproxy)
 
+    # Register our signal overrides before launching the processes
+    utils.handle_signal()
+
+    # Start the processes!
     sys.exit(launcher.wait())
