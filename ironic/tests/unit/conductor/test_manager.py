@@ -25,6 +25,7 @@ import re
 import time
 from unittest import mock
 
+import futurist
 from futurist import waiters
 from oslo_config import cfg
 import oslo_messaging as messaging
@@ -1616,7 +1617,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                             'async': False,
                             'attach': False,
                             'http_methods': ['POST']}}
-        self.service.init_host()
+        self._start_service()
         # init_host() called _spawn_worker because of the heartbeat
         mock_spawn.reset_mock()
         # init_host() called get_interface during driver loading
@@ -1646,7 +1647,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                                  'async': True,
                                  'attach': False,
                                  'http_methods': ['POST']}}
-        self.service.init_host()
+        self._start_service()
         # init_host() called _spawn_worker because of the heartbeat
         mock_spawn.reset_mock()
 
@@ -1667,7 +1668,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
             'test_method': {'func': mock.MagicMock(),
                             'async': True,
                             'http_methods': ['POST']}}
-        self.service.init_host()
+        self._start_service()
         # GET not supported by test_method
         exc = self.assertRaises(messaging.ExpectedException,
                                 self.service.driver_vendor_passthru,
@@ -1680,7 +1681,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test_driver_vendor_passthru_method_not_supported(self):
         # Test for when the vendor interface is set, but hasn't passed a
         # driver_passthru_mapping to MixinVendorInterface
-        self.service.init_host()
+        self._start_service()
         exc = self.assertRaises(messaging.ExpectedException,
                                 self.service.driver_vendor_passthru,
                                 self.context, 'fake-hardware', 'test_method',
@@ -1690,7 +1691,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                          exc.exc_info[0])
 
     def test_driver_vendor_passthru_driver_not_found(self):
-        self.service.init_host()
+        self._start_service()
         self.assertRaises(messaging.ExpectedException,
                           self.service.driver_vendor_passthru,
                           self.context, 'does_not_exist', 'test_method',
@@ -1699,7 +1700,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     @mock.patch.object(driver_factory, 'default_interface', autospec=True)
     def test_driver_vendor_passthru_no_default_interface(self,
                                                          mock_def_iface):
-        self.service.init_host()
+        self._start_service()
         # NOTE(rloo): service.init_host() will call
         #             driver_factory.default_interface() and we want these to
         #             succeed, so we set the side effect *after* that call.
@@ -1725,7 +1726,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                                        'http_methods': ['POST'],
                                        'func': None}}
         vendor_mock.driver_routes = fake_routes
-        self.service.init_host()
+        self._start_service()
 
         # init_host() will call get_interface
         mock_get_if.reset_mock()
@@ -1741,7 +1742,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     @mock.patch.object(driver_factory, 'default_interface', autospec=True)
     def test_get_driver_vendor_passthru_methods_no_default_interface(
             self, mock_def_iface):
-        self.service.init_host()
+        self._start_service()
         # NOTE(rloo): service.init_host() will call
         #             driver_factory.default_interface() and we want these to
         #             succeed, so we set the side effect *after* that call.
@@ -1766,7 +1767,7 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
             'test_method': {'func': test_method,
                             'async': False,
                             'http_methods': ['POST']}}
-        self.service.init_host()
+        self._start_service()
         exc = self.assertRaises(messaging.ExpectedException,
                                 self.service.driver_vendor_passthru,
                                 self.context, 'fake-hardware', 'test_method',
@@ -1780,6 +1781,10 @@ class VendorPassthruTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
 @mock.patch.object(images, 'is_whole_disk_image', autospec=True)
 class ServiceDoNodeDeployTestCase(mgr_utils.ServiceSetUpMixin,
                                   db_base.DbTestCase):
+
+    class fake_conductor:
+        id = 1
+
     def test_do_node_deploy_invalid_state(self, mock_iwdi):
         mock_iwdi.return_value = False
         self._start_service()
@@ -1817,14 +1822,17 @@ class ServiceDoNodeDeployTestCase(mgr_utils.ServiceSetUpMixin,
         self.assertFalse(mock_iwdi.called)
 
     def _test_do_node_deploy_validate_fail(self, mock_validate, mock_iwdi):
-        self._start_service()
         mock_iwdi.return_value = False
         # InvalidParameterValue should be re-raised as InstanceDeployFailure
         mock_validate.side_effect = exception.InvalidParameterValue('error')
         node = obj_utils.create_test_node(self.context, driver='fake-hardware')
-        exc = self.assertRaises(messaging.rpc.ExpectedException,
-                                self.service.do_node_deploy,
-                                self.context, node.uuid)
+        with mock.patch.object(self.service, '_concurrent_action_limit',
+                               autospec=True) as mock_ca_limit:
+
+            exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                    self.service.do_node_deploy,
+                                    self.context, node.uuid)
+            mock_ca_limit.assert_called_once_with(action='provisioning')
         # Compare true exception hidden by @messaging.expected_exceptions
         self.assertEqual(exception.InstanceDeployFailure, exc.exc_info[0])
         self.assertEqual(exc.exc_info[1].code, 400)
@@ -2046,13 +2054,15 @@ class ServiceDoNodeDeployTestCase(mgr_utils.ServiceSetUpMixin,
 
     def test_do_node_deploy_rebuild_from_available_state(self, mock_iwdi):
         mock_iwdi.return_value = False
-        self._start_service()
         # test node will not rebuild if state is AVAILABLE
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.AVAILABLE)
-        exc = self.assertRaises(messaging.rpc.ExpectedException,
-                                self.service.do_node_deploy,
-                                self.context, node['uuid'], rebuild=True)
+        with mock.patch.object(self.service, '_concurrent_action_limit',
+                               autospec=True) as mock_ca_limit:
+            exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                    self.service.do_node_deploy,
+                                    self.context, node['uuid'], rebuild=True)
+            mock_ca_limit.assert_called_once_with(action='provisioning')
         # Compare true exception hidden by @messaging.expected_exceptions
         self.assertEqual(exception.InvalidStateRequested, exc.exc_info[0])
         # Last_error should be None.
@@ -2064,13 +2074,15 @@ class ServiceDoNodeDeployTestCase(mgr_utils.ServiceSetUpMixin,
 
     def test_do_node_deploy_rebuild_protected(self, mock_iwdi):
         mock_iwdi.return_value = False
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.ACTIVE,
                                           protected=True)
-        exc = self.assertRaises(messaging.rpc.ExpectedException,
-                                self.service.do_node_deploy,
-                                self.context, node['uuid'], rebuild=True)
+        with mock.patch.object(self.service, '_concurrent_action_limit',
+                               autospec=True) as mock_ca_limit:
+            exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                    self.service.do_node_deploy,
+                                    self.context, node['uuid'], rebuild=True)
+            mock_ca_limit.assert_called_once_with(action='provisioning')
         # Compare true exception hidden by @messaging.expected_exceptions
         self.assertEqual(exception.NodeProtected, exc.exc_info[0])
         # Last_error should be None.
@@ -2094,9 +2106,12 @@ class ServiceDoNodeDeployTestCase(mgr_utils.ServiceSetUpMixin,
                                autospec=True) as mock_spawn:
             mock_spawn.side_effect = exception.NoFreeConductorWorker()
 
-            exc = self.assertRaises(messaging.rpc.ExpectedException,
-                                    self.service.do_node_deploy,
-                                    self.context, node.uuid)
+            with mock.patch.object(self.service, '_concurrent_action_limit',
+                                   autospec=True) as mock_ca_limit:
+                exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                        self.service.do_node_deploy,
+                                        self.context, node.uuid)
+                mock_ca_limit.assert_called_once_with(action='provisioning')
             # Compare true exception hidden by @messaging.expected_exceptions
             self.assertEqual(exception.NoFreeConductorWorker, exc.exc_info[0])
             node.refresh()
@@ -3541,7 +3556,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
         ])
 
     def test_do_node_rescue_invalid_state(self):
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           network_interface='noop',
                                           provision_state=states.AVAILABLE,
@@ -3603,7 +3617,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
 
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.rescue', autospec=True)
     def test__do_node_rescue_returns_rescuewait(self, mock_rescue):
-        self._start_service()
         node = obj_utils.create_test_node(
             self.context, driver='fake-hardware',
             provision_state=states.RESCUING,
@@ -3620,7 +3633,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
 
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.rescue', autospec=True)
     def test__do_node_rescue_returns_rescue(self, mock_rescue):
-        self._start_service()
         node = obj_utils.create_test_node(
             self.context, driver='fake-hardware',
             provision_state=states.RESCUING,
@@ -3639,7 +3651,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch.object(manager, 'LOG', autospec=True)
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.rescue', autospec=True)
     def test__do_node_rescue_errors(self, mock_rescue, mock_log):
-        self._start_service()
         node = obj_utils.create_test_node(
             self.context, driver='fake-hardware',
             provision_state=states.RESCUING,
@@ -3662,7 +3673,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch.object(manager, 'LOG', autospec=True)
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.rescue', autospec=True)
     def test__do_node_rescue_bad_state(self, mock_rescue, mock_log):
-        self._start_service()
         node = obj_utils.create_test_node(
             self.context, driver='fake-hardware',
             provision_state=states.RESCUING,
@@ -3682,7 +3692,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
 
     @mock.patch('ironic.conductor.task_manager.acquire', autospec=True)
     def test_do_node_unrescue(self, mock_acquire):
-        self._start_service()
         task = self._create_task(
             node_attrs=dict(driver='fake-hardware',
                             provision_state=states.RESCUE,
@@ -3700,7 +3709,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
             err_handler=conductor_utils.provisioning_error_handler)
 
     def test_do_node_unrescue_invalid_state(self):
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.AVAILABLE)
         exc = self.assertRaises(messaging.rpc.ExpectedException,
@@ -3742,7 +3750,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.unrescue',
                 autospec=True)
     def test__do_node_unrescue(self, mock_unrescue):
-        self._start_service()
         dii = {'agent_url': 'http://url',
                'agent_secret_token': 'token',
                'other field': 'value'}
@@ -3764,7 +3771,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.unrescue',
                 autospec=True)
     def test__do_node_unrescue_ironic_error(self, mock_unrescue, mock_log):
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.UNRESCUING,
                                           target_provision_state=states.ACTIVE,
@@ -3784,7 +3790,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.unrescue',
                 autospec=True)
     def test__do_node_unrescue_other_error(self, mock_unrescue, mock_log):
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.UNRESCUING,
                                           target_provision_state=states.ACTIVE,
@@ -3802,7 +3807,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
     @mock.patch('ironic.drivers.modules.fake.FakeRescue.unrescue',
                 autospec=True)
     def test__do_node_unrescue_bad_state(self, mock_unrescue):
-        self._start_service()
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           provision_state=states.UNRESCUING,
                                           instance_info={})
@@ -3822,7 +3826,6 @@ class DoNodeRescueTestCase(mgr_utils.CommonMixIn, mgr_utils.ServiceSetUpMixin,
             provision_state=states.RESCUEWAIT,
             target_provision_state=states.RESCUE,
             instance_info={'rescue_password': 'password'})
-        self._start_service()
         self.service.do_provisioning_action(self.context, node.uuid, 'abort')
         node.refresh()
         self.assertEqual(states.RESCUEFAIL, node.provision_state)
@@ -3980,6 +3983,8 @@ class MiscTestCase(mgr_utils.ServiceSetUpMixin, mgr_utils.CommonMixIn,
                         mock_fail_if_state):
         self._start_service()
         self.service._correct_stuck_states()
+        # reset_mock() after startup to verify only test-invoked ones
+        mock_nodeinfo_list.reset_mock()
         self.columns = ['uuid', 'driver', 'conductor_group', 'id']
         nodes = [self._create_node(id=i, driver='fake-hardware',
                                    conductor_group='')
@@ -4014,11 +4019,12 @@ class MiscTestCase(mgr_utils.ServiceSetUpMixin, mgr_utils.CommonMixIn,
         nodes = [self._create_node(driver='fake-hardware')]
         mock_nodeinfo_list.return_value = self._get_nodeinfo_list_response(
             nodes)
-        self.service._shutdown = True
+        self.service._shutdown.set()
 
         result = list(self.service.iter_nodes(fields=['id'],
                                               filters=mock.sentinel.filters))
         self.assertEqual([], result)
+        self.service._shutdown.clear()
 
     def test_get_node_with_token(self):
         node = obj_utils.create_test_node(
@@ -4068,7 +4074,7 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                        autospec=True)
     def test_set_console_mode_enabled(self, mock_notify):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware')
-        self._start_service()
+        self.service._executor = futurist.SynchronousExecutor()
         self.service.set_console_mode(self.context, node.uuid, True)
         node.refresh()
         self.assertTrue(node.console_enabled)
@@ -4083,7 +4089,7 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test_set_console_mode_disabled(self, mock_notify):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           console_enabled=True)
-        self._start_service()
+        self.service._executor = futurist.SynchronousExecutor()
         self.service.set_console_mode(self.context, node.uuid, False)
         node.refresh()
         self.assertFalse(node.console_enabled)
@@ -4097,7 +4103,6 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test_set_console_mode_validation_fail(self, mock_val):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           last_error=None)
-        self._start_service()
         mock_val.side_effect = exception.InvalidParameterValue('error')
         exc = self.assertRaises(messaging.rpc.ExpectedException,
                                 self.service.set_console_mode,
@@ -4112,7 +4117,7 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           last_error=None,
                                           console_enabled=False)
-        self._start_service()
+        self.service._executor = futurist.SynchronousExecutor()
         mock_sc.side_effect = exception.IronicException('test-error')
         self.service.set_console_mode(self.context, node.uuid, True)
         mock_sc.assert_called_once_with(mock.ANY, mock.ANY)
@@ -4131,7 +4136,7 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           last_error=None,
                                           console_enabled=True)
-        self._start_service()
+        self.service._executor = futurist.SynchronousExecutor()
         mock_sc.side_effect = exception.IronicException('test-error')
         self.service.set_console_mode(self.context, node.uuid, False)
         mock_sc.assert_called_once_with(mock.ANY, mock.ANY)
@@ -4149,7 +4154,7 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test_enable_console_already_enabled(self, mock_notify, mock_sc):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           console_enabled=True)
-        self._start_service()
+        self.service._executor = futurist.SynchronousExecutor()
         self.service.set_console_mode(self.context, node.uuid, True)
         self.assertFalse(mock_sc.called)
         self.assertFalse(mock_notify.called)
@@ -4160,7 +4165,6 @@ class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test_disable_console_already_disabled(self, mock_notify, mock_sc):
         node = obj_utils.create_test_node(self.context, driver='fake-hardware',
                                           console_enabled=False)
-        self._start_service()
         self.service.set_console_mode(self.context, node.uuid, False)
         self.assertFalse(mock_sc.called)
         self.assertFalse(mock_notify.called)
@@ -4800,11 +4804,12 @@ class SensorsTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         nodes = queue.Queue()
         nodes.put_nowait(('fake_uuid', 'fake-hardware', '', None))
         self._start_service()
-        self.service._shutdown = True
+        self.service._shutdown.set()
         CONF.set_override('send_sensor_data', True,
                           group='sensor_data')
         self.service._sensors_nodes_task(self.context, nodes)
         acquire_mock.return_value.__enter__.assert_not_called()
+        self.service._shutdown.clear()
 
     @mock.patch.object(task_manager, 'acquire', autospec=True)
     def test_send_sensor_task_no_management(self, acquire_mock):
@@ -4864,7 +4869,6 @@ class SensorsTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                                       self.service._sensors_nodes_task,
                                       self.context, mock.ANY)
 
-    @mock.patch.object(queue, 'Queue', autospec=True)
     @mock.patch.object(manager.ConductorManager, '_sensors_conductor',
                        autospec=True)
     @mock.patch.object(manager.ConductorManager, '_spawn_worker',
@@ -4875,8 +4879,7 @@ class SensorsTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     def test___send_sensor_data_disabled(
             self, get_nodeinfo_list_mock,
             _mapped_to_this_conductor_mock,
-            mock_spawn, mock_sensors_conductor,
-            mock_queue):
+            mock_spawn, mock_sensors_conductor):
         self._start_service()
 
         CONF.set_override('send_sensor_data', True, group='sensor_data')
@@ -4889,7 +4892,15 @@ class SensorsTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
                           group='sensor_data')
         _mapped_to_this_conductor_mock.return_value = True
         get_nodeinfo_list_mock.return_value = [('fake_uuid', 'fake', None)]
-        self.service._send_sensor_data(self.context)
+
+        # NOTE(cid): Patch here instead of as a decorator to avoid replacing
+        # queue.Queue globally. ThreadPoolExecutor uses it in
+        # _init_executors(), called by init_host(), and relies on real queue
+        # semantics for backlog checks.
+        with mock.patch('ironic.conductor.manager.queue.Queue',
+                        autospec=True) as mock_queue:
+            self.service._send_sensor_data(self.context)
+
         mock_sensors_conductor.assert_not_called()
         # NOTE(TheJulia): Can't use the spawn worker since it records other,
         # unrelated calls. So, queue works well here.
@@ -5783,6 +5794,38 @@ class ManagerDoSyncPowerStateTestCase(db_base.DbTestCase):
         mock_power_update.assert_called_once_with(
             self.task.context, self.node.instance_uuid, states.POWER_OFF)
 
+    @mock.patch.object(nova, 'power_update', autospec=True)
+    def test_max_retries_exceeded_preserve_admin_intent(self,
+                                                        mock_power_update,
+                                                        node_power_action):
+        self.config(force_power_state_during_sync=True, group='conductor')
+        self.config(power_state_sync_max_retries=1, group='conductor')
+
+        self.node.maintenance = True
+        self.node.maintenance_reason = 'admin set maintenance'
+        self.node.fault = None
+
+        self._do_sync_power_state(
+            states.POWER_ON,
+            [exception.IronicException('foo'),
+             exception.IronicException('foo')]
+        )
+
+        self.assertFalse(self.power.validate.called)
+        power_exp_calls = [mock.call(self.task)] * 2
+        self.assertEqual(power_exp_calls,
+                         self.power.get_power_state.call_args_list)
+        node_power_action.assert_not_called()
+        self.assertIsNone(self.node.power_state)
+        self.assertEqual(2,
+                         self.service.power_state_sync_count[self.node.uuid])
+
+        self.assertTrue(self.node.maintenance)
+        self.assertEqual('admin set maintenance', self.node.maintenance_reason)
+        self.assertIsNone(self.node.fault)
+        mock_power_update.assert_called_once_with(
+            self.task.context, self.node.instance_uuid, None)
+
     @mock.patch('ironic.objects.node.NodeCorrectedPowerStateNotification',
                 autospec=True)
     @mock.patch.object(nova, 'power_update', autospec=True)
@@ -6647,7 +6690,6 @@ class ManagerTestProperties(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
 
     def _check_driver_properties(self, hw_type, expected, agent_common=True,
                                  pxe_common=True):
-        self._start_service()
         properties = self.service.get_driver_properties(self.context, hw_type)
         if agent_common:
             expected.extend(['agent_verify_ca',
@@ -6710,7 +6752,7 @@ class ManagerTestProperties(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self._check_driver_properties('manual-management', [])
 
     def test_driver_properties_fail(self):
-        self.service.init_host()
+        self._start_service()
         exc = self.assertRaises(messaging.rpc.ExpectedException,
                                 self.service.get_driver_properties,
                                 self.context, "bad-driver")
@@ -6817,7 +6859,6 @@ class GetStepsForAutomatedCleaningTestCase(mgr_utils.ServiceSetUpMixin,
 
     def setUp(self):
         super(GetStepsForAutomatedCleaningTestCase, self).setUp()
-        self._start_service()
         self.node = obj_utils.create_test_node(
             self.context,
             driver='fake-hardware',
@@ -9328,3 +9369,118 @@ class VirtualMediaTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self.node.refresh()
         self.assertIn("Could not attach device cdrom", self.node.last_error)
         self.assertIn("disabled or not implemented", self.node.last_error)
+
+    @mock.patch.object(redfish.management.RedfishManagement, 'validate',
+                       autospec=True)
+    def test_attach_virtual_media_power_failure(self, mock_validate):
+        CONF.set_override('use_swift', 'false', group='redfish')
+        self.node.maintenance = True
+        self.node.fault = faults.POWER_FAILURE
+        self.node.save()
+        self.assertRaises(
+            exception.TemporaryFailure,
+            self.service.attach_virtual_media, self.context, self.node.id,
+            boot_devices.CDROM, 'https://url')
+        mock_validate.assert_called_once_with(mock.ANY, mock.ANY)
+
+    @mock.patch.object(redfish.management.RedfishManagement, 'validate',
+                       autospec=True)
+    def test_detach_virtual_media_power_failure(self, mock_validate):
+        CONF.set_override('use_swift', 'false', group='redfish')
+        self.node.maintenance = True
+        self.node.fault = faults.POWER_FAILURE
+        self.node.save()
+        self.assertRaises(
+            exception.TemporaryFailure,
+            self.service.detach_virtual_media, self.context, self.node.id,
+            boot_devices.CDROM)
+        mock_validate.assert_called_once_with(mock.ANY, mock.ANY)
+
+
+class ConductorCleanupTestCase(mgr_utils.ServiceSetUpMixin,
+                               db_base.DbTestCase):
+    """Test stale conductors cleanup."""
+    def test_cleanup_stale_conductors(self):
+        """Test the periodic cleanup of stale conductors."""
+        self._start_service()
+
+        self.conductor1 = self.dbapi.register_conductor({
+            'hostname': 'conductor-1',
+            'drivers': ['fake'],
+            'conductor_group': 'group1'
+        })
+        self.conductor2 = self.dbapi.register_conductor({
+            'hostname': 'conductor-2',
+            'drivers': ['fake'],
+            'conductor_group': 'group2'
+        })
+
+        self.dbapi.touch_conductor('conductor-1', online=False)
+
+        with mock.patch.object(self.dbapi, 'get_offline_conductors',
+                               return_value=['conductor-1'], autospec=True):
+            self.service._cleanup_stale_conductors(self.context)
+
+        self.assertRaises(exception.ConductorNotFound,
+                          self.dbapi.get_conductor, 'conductor-1')
+
+        conductor2 = self.dbapi.get_conductor('conductor-2')
+        self.assertEqual('conductor-2', conductor2.hostname)
+
+    def test_cleanup_stale_conductors_disabled(self):
+        """Test that cleanup is disabled when configured to do so."""
+        self._start_service()
+
+        conductors = []
+        for i in range(5):
+            self.dbapi.register_conductor({
+                'hostname': 'conductor-%d' % i,
+                'drivers': ['fake'],
+                'conductor_group': 'group%d' % i
+            })
+            self.dbapi.touch_conductor('conductor-%d' % i, online=False)
+            conductors.append('conductor-%d' % i)
+
+        self.config(conductor_cleanup_batch_size=2, group='conductor')
+
+        with mock.patch.object(self.dbapi, 'get_offline_conductors',
+                               return_value=conductors, autospec=True):
+            with mock.patch.object(self.dbapi, 'delete_conductor',
+                                   autospec=True) as mock_delete:
+                self.service._cleanup_stale_conductors(self.context)
+
+                self.assertEqual(2, mock_delete.call_count)
+
+    def _run_cleanup_stale_conductors_and_check_warning(
+            self, heartbeat_timeout, conductor_cleanup_timeout,
+            expected_warning_substring=None):
+        self._start_service()
+        self.config(heartbeat_timeout=heartbeat_timeout, group='conductor')
+        self.config(conductor_cleanup_timeout=conductor_cleanup_timeout,
+                    group='conductor')
+        self.config(conductor_cleanup_batch_size=2, group='conductor')
+        with mock.patch.object(self.dbapi, 'get_offline_conductors',
+                               return_value=[], autospec=True):
+            with mock.patch('ironic.conductor.manager.LOG',
+                            autospec=True) as mock_log:
+                self.service.cleanup_stale_conductors(self.context)
+                if expected_warning_substring is None:
+                    mock_log.warning.assert_not_called()
+                else:
+                    mock_log.warning.assert_called_once()
+                    self.assertIn(expected_warning_substring,
+                                  mock_log.warning.call_args[0][0])
+
+    def test_cleanup_stale_conductors_configs_validation(self):
+        test_cases = [
+            (60, 180, None),  # valid: exactly 3x
+            (60, 200, None),  # valid: greater than 3x
+            (0, 180, 'heartbeat_timeout is invalid'),
+            (60, 120, 'conductor_cleanup_timeout (120) must be at least 3x'),
+        ]
+        for heartbeat_timeout, cleanup_timeout, expected_warning in test_cases:
+            self._run_cleanup_stale_conductors_and_check_warning(
+                heartbeat_timeout=heartbeat_timeout,
+                conductor_cleanup_timeout=cleanup_timeout,
+                expected_warning_substring=expected_warning
+            )

@@ -2,6 +2,16 @@
 REST API Version History
 ========================
 
+1.101 (Flamingo)
+-----------------------
+
+Add a 'category' field to the Port object.
+
+1.100 (Flamingo)
+-----------------------
+
+Add a 'vendor' field to the Port object.
+
 1.99 (Flamingo)
 -----------------------
 

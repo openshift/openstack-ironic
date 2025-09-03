@@ -11,7 +11,7 @@
 # under the License.
 
 import datetime
-import signal
+import multiprocessing
 import time
 
 from oslo_config import cfg
@@ -21,21 +21,50 @@ from oslo_utils import timeutils
 from ironic.common import console_factory
 from ironic.common import rpc
 from ironic.common import rpc_service
+from ironic.common import wsgi_service
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
 
+# NOTE(TheJulia): We set the following flags as it relates to process
+# shutdown. Because in the post-eventlet model we now consist of a primary
+# process and an application process with then threads, we *must* use
+# multiprocessing because this needs to cross the process boundary where
+# multiprocessing was invoked to launch new processes.
+
+# Always set a flag for deregistering, when shutting down the primary
+# process will clear the flag.
+DEREGISTER_ON_SHUTDOWN = multiprocessing.Event()
+DEREGISTER_ON_SHUTDOWN.set()
+# Flag which can be set to indicate if we need to drain the conductor
+# workload, or not. Set by the primary process when shutdown has been
+# requested.
+DRAIN = multiprocessing.Event()
+
 
 class RPCService(rpc_service.BaseRPCService):
 
-    def __init__(self, host, manager_module, manager_class):
+    def __init__(self, host, manager_module, manager_class,
+                 embed_api=False):
         super().__init__(host, manager_module, manager_class)
-        self.deregister = True
-        self.draining = False
+        self.apiserver = None
+        self._embed_api = embed_api
+
+    @property
+    def deregister_on_shutdown(self):
+        return DEREGISTER_ON_SHUTDOWN.is_set()
+
+    def is_draining(self):
+        return DRAIN.is_set()
 
     def _real_start(self):
         super()._real_start()
         rpc.set_global_manager(self.manager)
+
+        if self._embed_api:
+            self.apiserver = wsgi_service.WSGIService(
+                'ironic_api', CONF.api.enable_ssl_api)
+            self.apiserver.start()
 
         # Start in a known state of no console containers running.
         # Any enabled console managed by this conductor will be started
@@ -47,9 +76,18 @@ class RPCService(rpc_service.BaseRPCService):
         extend_time = initial_time + datetime.timedelta(
             seconds=CONF.hash_ring_reset_interval)
 
+        # Stop serving the embedded API first to avoid any new requests
         try:
-            self.manager.del_host(deregister=self.deregister,
-                                  clear_node_reservations=False)
+            if self.apiserver is not None:
+                self.apiserver.stop()
+                self.apiserver.wait()
+        except Exception:
+            LOG.exception('Service error occurred when stopping the API')
+
+        try:
+            self.manager.del_host(
+                deregister=self.deregister_on_shutdown,
+                clear_node_reservations=False)
         except Exception as e:
             LOG.exception('Service error occurred when cleaning up '
                           'the RPC manager. Error: %s', e)
@@ -104,7 +142,7 @@ class RPCService(rpc_service.BaseRPCService):
         provider.stop_all_containers()
 
     def _shutdown_timeout_reached(self, initial_time):
-        if self.draining:
+        if self.is_draining():
             shutdown_timeout = CONF.drain_shutdown_timeout
         else:
             shutdown_timeout = CONF.conductor.graceful_shutdown_timeout
@@ -114,27 +152,3 @@ class RPCService(rpc_service.BaseRPCService):
         shutdown_time = initial_time + datetime.timedelta(
             seconds=shutdown_timeout)
         return shutdown_time < timeutils.utcnow()
-
-    def _handle_no_deregister(self, signo, frame):
-        LOG.info('Got signal SIGUSR1. Not deregistering on next shutdown '
-                 'of service %(service)s on host %(host)s.',
-                 {'service': self.topic, 'host': self.host})
-        self.deregister = False
-
-    def _handle_drain(self, signo, frame):
-        LOG.info('Got signal SIGUSR2. Starting drain shutdown'
-                 'of service %(service)s on host %(host)s.',
-                 {'service': self.topic, 'host': self.host})
-        self.draining = True
-        self.stop()
-
-    def handle_signal(self):
-        """Add a signal handler for SIGUSR1, SIGUSR2.
-
-        The SIGUSR1 handler ensures that the manager is not deregistered when
-        it is shutdown.
-
-        The SIGUSR2 handler starts a drain shutdown.
-        """
-        signal.signal(signal.SIGUSR1, self._handle_no_deregister)
-        signal.signal(signal.SIGUSR2, self._handle_drain)

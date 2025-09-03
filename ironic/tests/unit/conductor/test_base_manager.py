@@ -221,6 +221,18 @@ class StartStopTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self.assertTrue(log_mock.error.called)
         del_mock.assert_called_once()
 
+    @mock.patch.object(base_manager, 'LOG', autospec=True)
+    @mock.patch.object(base_manager.BaseConductorManager,
+                       '_register_and_validate_hardware_interfaces',
+                       autospec=True)
+    @mock.patch.object(base_manager.BaseConductorManager, 'del_host',
+                       autospec=True)
+    def test_start_fails_incorrect_workers(self, del_mock, reg_mock, log_mock):
+        CONF.set_override('workers_pool_size', 24, group="conductor")
+        self.assertRaises(exception.IncorrectConfiguration,
+                          self.service.init_host)
+        self.assertTrue(log_mock.error.called)
+
     def test_start_recover_nodes_stuck(self):
         state_trans = [
             (states.DEPLOYING, states.DEPLOYFAIL),
@@ -246,17 +258,19 @@ class StartStopTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
             self.assertEqual(state[1], node.provision_state,
                              'Test failed when recovering from %s' % state[0])
 
+    @mock.patch.object(base_manager.BaseConductorManager, '_spawn_worker',
+                       autospec=True)
     @mock.patch.object(base_manager, 'LOG', autospec=True)
-    def test_warning_on_low_workers_pool(self, log_mock):
+    def test_warning_on_low_workers_pool(self, log_mock, mock_spawn):
         CONF.set_override('workers_pool_size', 3, 'conductor')
         self._start_service()
         self.assertTrue(log_mock.warning.called)
 
     def test_conductor_shutdown_flag(self):
         self._start_service()
-        self.assertFalse(self.service._shutdown)
+        self.assertFalse(self.service._shutdown.is_set())
         self.service.del_host()
-        self.assertTrue(self.service._shutdown)
+        self.assertTrue(self.service._shutdown.is_set())
 
     @mock.patch.object(deploy_utils, 'get_ironic_api_url', autospec=True)
     @mock.patch.object(mdns, 'Zeroconf', autospec=True)
@@ -295,7 +309,10 @@ class StartStopTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
     @mock.patch.object(dbapi, 'get_instance', autospec=True)
     def test_start_dbapi_single_call(self, mock_dbapi):
         self._start_service()
-        self.assertEqual(1, mock_dbapi.call_count)
+        # NOTE(TheJulia): This counts the dbapi instance count
+        # from starting the hash_ring, but since the hashring is
+        # common code, it shouldn't invoke a db call directly.
+        self.assertEqual(0, mock_dbapi.call_count)
 
     def test_start_with_json_rpc(self):
         CONF.set_override('rpc_transport', 'json-rpc')
@@ -379,9 +396,9 @@ class ManagerSpawnWorkerTestCase(tests_base.TestCase):
         super(ManagerSpawnWorkerTestCase, self).setUp()
         self.service = manager.ConductorManager('hostname', 'test-topic')
         self.service._executor = mock.Mock(
-            spec=futurist.GreenThreadPoolExecutor)
+            spec=futurist.DynamicThreadPoolExecutor)
         self.service._reserved_executor = mock.Mock(
-            spec=futurist.GreenThreadPoolExecutor)
+            spec=futurist.DynamicThreadPoolExecutor)
 
         self.func = lambda: None
 
@@ -442,6 +459,7 @@ class RegisterInterfacesTestCase(mgr_utils.ServiceSetUpMixin,
     def setUp(self):
         super(RegisterInterfacesTestCase, self).setUp()
         self._start_service()
+        self._executor = futurist.SynchronousExecutor()
 
     def test__register_and_validate_hardware_interfaces(self,
                                                         esi_mock,
@@ -613,8 +631,10 @@ class StartConsolesTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self.assertFalse(mock_notify.called)
 
     @mock.patch.object(base_manager, 'LOG', autospec=True)
-    def test__start_consoles_node_not_found(self, log_mock, mock_notify,
-                                            mock_start_console):
+    @mock.patch.object(base_manager.BaseConductorManager, '_spawn_worker',
+                       autospec=True)
+    def test__start_consoles_node_not_found(self, mock_spawn, log_mock,
+                                            mock_notify, mock_start_console):
         test_node = obj_utils.create_test_node(self.context,
                                                driver='fake-hardware',
                                                console_enabled=True)
@@ -658,3 +678,34 @@ class MiscTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self.assertEqual('transition', entry['event_type'])
         self.assertEqual('ERROR', entry['severity'])
         self.assertEqual('unknown err', entry['event'])
+
+
+class RejectorTestCase(db_base.DbTestCase):
+
+    def setUp(self):
+        super(RejectorTestCase, self).setUp()
+        self.rejector = base_manager.reject_when_reached(5)
+
+    def test_reject_when_reached(self):
+        fake_executor = mock.Mock()
+        fake_executor.num_workers = 4
+        error = ('Queued backlog count is 1, and the pool is '
+                 'presently at 4 executors. Adding new work '
+                 'would go beyond 5, the maximum thread '
+                 'pool size.')
+        self.assertRaisesRegex(futurist.RejectedSubmission,
+                               error,
+                               self.rejector, fake_executor, 1)
+        fake_executor.num_workers = 3
+        error = ('Queued backlog count is 2, and the pool is '
+                 'presently at 3 executors. Adding new work '
+                 'would go beyond 5, the maximum thread '
+                 'pool size.')
+        self.assertRaisesRegex(futurist.RejectedSubmission,
+                               error,
+                               self.rejector, fake_executor, 2)
+
+    def test_not_reject_when_reached(self):
+        fake_executor = mock.Mock()
+        fake_executor.num_workers = 3
+        self.rejector(fake_executor, 1)

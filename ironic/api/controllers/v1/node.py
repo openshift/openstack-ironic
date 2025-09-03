@@ -1008,7 +1008,9 @@ class NodeStatesController(rest.RestController):
             policy_name='baremetal:runbook:use',
             runbook_ident=runbook)
 
-        node_traits = rpc_node.traits.get_trait_names() or []
+        traits = objects.TraitList.get_by_node_id(api.request.context,
+                                                  rpc_node.id)
+        node_traits = traits.get_trait_names() or []
         if rpc_runbook.name not in node_traits:
             msg = (_('This runbook has not been approved for '
                      'use on this node %s. Please ask an administrator '
@@ -1649,7 +1651,12 @@ def node_convert_with_links(rpc_node, fields=None, sanitize=True):
         fields=_get_fields_for_node_query(fields))
 
     if node.get('traits') is not None:
-        node['traits'] = rpc_node.traits.get_trait_names()
+        if isinstance(node['traits'], objects.TraitList):
+            traits = node['traits']
+        else:
+            traits = objects.TraitList.get_by_node_id(api.request.context,
+                                                      rpc_node.id)
+        node['traits'] = traits.get_trait_names()
 
     if (api_utils.allow_expose_conductors()
             and (fields is None or 'conductor' in fields)):
@@ -2386,6 +2393,8 @@ class NodesController(rest.RestController):
             pecan.abort(http_client.BAD_REQUEST, e.args[0])
         if not remainder:
             return
+        # TODO(stephenfin): Remove all of these once we have version decorators
+        # on them all
         if ((remainder[0] == 'portgroups'
                 and not api_utils.allow_portgroups_subcontrollers())
             or (remainder[0] == 'vifs'
@@ -2864,7 +2873,7 @@ class NodesController(rest.RestController):
             of the resource to be returned.
         """
         if self.from_chassis:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         rpc_node = api_utils.check_node_policy_and_retrieve(
             'baremetal:node:get', node_ident, with_suffix=True)
@@ -2890,7 +2899,7 @@ class NodesController(rest.RestController):
            :language: javascript
         """
         if self.from_chassis:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         node_capabilities = node.get('properties', {}).get('capabilities', '')
         # ``check_allow_boot_mode`` expects ``node_capabilities`` to be a list
@@ -2991,7 +3000,7 @@ class NodesController(rest.RestController):
     def _validate_patch(self, patch, reset_interfaces):
         corrected_values = {}
         if self.from_chassis:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         node_capabilities = api_utils.get_patch_values(
             patch, '/properties/capabilities')
@@ -3247,7 +3256,7 @@ class NodesController(rest.RestController):
             raise exception.NotFound()
 
         if self.from_chassis:
-            raise exception.OperationNotPermitted()
+            raise exception.MalformedRequestURI()
 
         context = api.request.context
         try:
