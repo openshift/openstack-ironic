@@ -1,22 +1,16 @@
+.. meta::
+   :description: Integrate Ironic with OpenStack Nova for bare metal instance management. Configure flavors, host aggregates, and bare metal scheduling.
+   :keywords: nova integration, bare metal instances, openstack compute, flavors configuration, host aggregates, scheduling, ironic nova driver
+   :author: OpenStack Ironic Team
+   :robots: index, follow
+   :audience: cloud operators, openstack administrators
+
 Configure the Compute service to use the Bare Metal service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The Compute service needs to be configured to use the Bare Metal service's
 driver. The configuration file for the Compute service is typically located at
 ``/etc/nova/nova.conf``.
-
-.. note::
-
-   As of the Newton release, it is possible to have multiple
-   nova-compute services running the ironic virtual driver (in
-   nova) to provide redundancy. Bare metal nodes are mapped to the
-   services via a hash ring. If a service goes down, the
-   available bare metal nodes are remapped to different services.
-
-   Once active, a node will stay mapped to the same nova-compute
-   even when it goes down. The node is unable to be managed through
-   the Compute API until the service responsible returns to an active
-   state.
 
 The following configuration file must be modified on the Compute
 service's controller nodes and compute nodes.

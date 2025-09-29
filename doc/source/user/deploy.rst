@@ -1,15 +1,17 @@
+.. meta::
+   :description: Deploy bare metal instances with Ironic. Standalone deployments, allocations, boot modes, and direct provisioning without Nova integration.
+   :keywords: bare metal deployment, ironic standalone, instance deployment, allocations, boot modes, direct provisioning
+   :author: OpenStack Ironic Team
+   :robots: index, follow
+   :audience: cloud users, developers
+
 Deploying with Bare Metal service
 =================================
 
 This guide explains how to use Ironic to deploy nodes without any front-end
 service, such as OpenStack Compute (nova) or Metal3_.
 
-.. note::
-   To simplify this task you can use the metalsmith_ tool which provides a
-   convenient CLI for the most common cases.
-
 .. _Metal3: http://metal3.io/
-.. _metalsmith: https://docs.openstack.org/metalsmith/latest/
 
 Allocations
 -----------
@@ -97,8 +99,7 @@ You need to specify image information in the node's ``instance_info``
      If your operating system is running in FIPS 140-2 mode, MD5 will not be
      available, and you **must** use SHA256 or another modern algorithm.
 
-  Starting with the Stein release of ironic-python-agent can also be a URL
-  to a checksums file, e.g. one generated with:
+  The checksum can also be a URL to a checksums file, e.g. one generated with:
 
   .. code-block:: console
 
@@ -128,18 +129,6 @@ With a SHA256 hash:
      --instance-info image_os_hash_algo=sha256 \
      --instance-info image_os_hash_value=a64dd95e0c48e61ed741ff026d8c89ca38a51f3799955097c5123b1705ef13d4 \
      --instance-info image_type=partition \
-     --instance-info root_gb=10
-
-If you use network boot (or Ironic before Yoga), two more fields must be set:
-
-.. code-block:: shell
-
- baremetal node set $NODE_UUID \
-     --instance-info image_source=http://image.server/my-image.qcow2 \
-     --instance-info image_checksum=1f9c0e1bad977a954ba40928c1e11f33 \
-     --instance-info image_type=partition \
-     --instance-info kernel=http://image.server/my-image.kernel \
-     --instance-info ramdisk=http://image.server/my-image.initramfs \
      --instance-info root_gb=10
 
 With a whole disk image and a checksum URL:
@@ -187,11 +176,10 @@ Capabilities
         The two settings must not contradict each other.
 
   .. note::
-     This capability was introduced in the Wallaby release series,
-     previously ironic used a separate ``instance_info/deploy_boot_mode``
+     Previously ironic used a separate ``instance_info/deploy_boot_mode``
      field instead.
 
-* Starting with the Ussuri release, you can set :ref:`root device hints
+* You can set :ref:`root device hints
   <root-device-hints>` per instance:
 
   .. code-block:: shell
@@ -221,7 +209,7 @@ override a node's storage interface, run the following:
 ``instance_info`` values persist until after a node is cleaned.
 
 .. note::
-   This feature is available starting with the Wallaby release.
+   This feature is available.
 
 Attaching virtual interfaces
 ----------------------------
@@ -266,7 +254,7 @@ Deployment
 
     baremetal node deploy $NODE_UUID
 
-#. Starting with the Wallaby release you can also request custom deploy steps,
+#. You can also request custom deploy steps,
    see :ref:`standalone-deploy-steps` for details.
 
 .. _deploy-configdrive:
@@ -309,7 +297,7 @@ command, for example:
 Building a config drive on the conductor side
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Starting with the Stein release and ``ironicclient`` 2.7.0, you can request
+In modern versions of ``python-ironicclient``, you can request
 building a configdrive on the server side by providing a JSON with keys
 ``meta_data``, ``user_data`` and ``network_data`` (all optional), e.g.:
 
