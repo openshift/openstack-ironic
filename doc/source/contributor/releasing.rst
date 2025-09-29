@@ -51,7 +51,6 @@ Non-client libraries
 The following deliverables are non-client libraries:
 
 * ironic-lib
-* metalsmith
 * sushy
 
 Client libraries
@@ -81,6 +80,10 @@ The following deliverables are Tempest plugins:
 The following deliverables are tools:
 
 * ironic-python-agent-builder
+
+  .. NOTE:: if ironic-python-agent-builder is branched after
+            ironic-python-agent, we need to make sure all artifacts
+            are built by the time of Ironic branching.
 
 The following deliverables are services, or treated as such:
 

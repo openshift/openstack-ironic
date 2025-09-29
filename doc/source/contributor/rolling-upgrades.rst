@@ -4,8 +4,8 @@
 Rolling Upgrades
 ================
 
-The ironic (ironic-api and ironic-conductor) services support rolling upgrades,
-starting with a rolling upgrade from the Ocata to the Pike release. This
+The ironic (ironic-api and ironic-conductor) services support rolling upgrades.
+This
 describes the design of rolling upgrades, followed by notes for developing new
 features or modifying an IronicObject.
 
@@ -19,7 +19,10 @@ Ironic follows the `release-cycle-with-intermediary release model
 The releases are `semantic-versioned <http://semver.org/>`_, in the form
 <major>.<minor>.<patch>.
 We refer to a ``named release`` of ironic as the release associated with a
-development cycle like Pike.
+time based integrated release of OpenStack, for example 2025.1 which was
+named Epoxy. Please review
+`OpenStack releases <https://releases.openstack.org/>`_ for the high level
+release version to name mappings.
 
 In addition, ironic follows the `standard deprecation policy
 <https://governance.openstack.org/tc/reference/tags/assert_follows-standard-deprecation.html>`_,
@@ -29,7 +32,7 @@ is both deprecated *and* removed between two named releases.
 
 Rolling upgrades will be supported between:
 
-* named release N to N+1 (starting with N == Ocata)
+* named release N to N+1
 * any named release to its latest revision, containing backported bug fixes.
   Because those bug fixes can contain improvements to the upgrade process, the
   operator should patch the system before upgrading between named releases.
@@ -131,7 +134,7 @@ all the ironic services.
 
 The default value of empty indicates that ironic-api and ironic-conductor
 will use the latest versions of API, RPC and IronicObjects. Its possible values
-are releases, named (e.g. ``ocata``) or sem-versioned (e.g. ``7.0``).
+are releases, named (e.g. ``2025.1``) or sem-versioned (e.g. ``29.0``).
 
 Internally, in `common/release_mappings.py
 <https://opendev.org/openstack/ironic/src/branch/master/ironic/common/release_mappings.py>`_,

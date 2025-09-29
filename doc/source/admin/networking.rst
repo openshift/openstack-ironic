@@ -1,3 +1,10 @@
+.. meta::
+   :description: Configure networking for Ironic bare metal deployments. Neutron integration, VLAN management, physical networks, and tenant network isolation.
+   :keywords: ironic networking, neutron integration, bare metal networking, VLAN configuration, physical networks, tenant isolation, network interfaces
+   :author: OpenStack Ironic Team
+   :robots: index, follow
+   :audience: network engineers, system administrators
+
 .. _admin-networking:
 
 ======================================
@@ -257,6 +264,11 @@ it is needed.
 
 Physical networks
 -----------------
+
+.. note::
+   Physical networks work alongside :doc:`conductor-groups` and
+   :doc:`availability-zones` to provide complete resource partitioning.
+   Consider all three mechanisms when designing your network topology.
 
 An Ironic port may be associated with a physical network using its
 ``physical_network`` field. Ironic uses this information when
