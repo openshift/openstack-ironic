@@ -272,6 +272,11 @@ def plug_port_to_tenant_network(task, port_like_obj, client=None):
     binding_profile = {'local_link_information': local_link_info}
     if local_group_info:
         binding_profile['local_group_information'] = local_group_info
+
+    # Include physical_network if available
+    if port_like_obj.physical_network:
+        binding_profile['physical_network'] = port_like_obj.physical_network
+
     port_attrs['binding:profile'] = binding_profile
 
     if client_id_opt:
@@ -676,7 +681,8 @@ class NeutronVIFPortIDMixin(VIFPortIDMixin):
         # NOTE(vsaienko): allow to unplug VIFs from ACTIVE instance.
         # NOTE(TheJulia): Also ensure that we delete the vif when in
         # DELETING state.
-        if task.node.provision_state in [states.ACTIVE, states.DELETING]:
+        if task.node.provision_state in [states.ACTIVE, states.DELETING,
+                                         states.AVAILABLE]:
             neutron.unbind_neutron_port(vif_id, context=task.context)
 
     def get_node_network_data(self, task):
