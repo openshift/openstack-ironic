@@ -220,13 +220,7 @@ There is a possibility of utilizing
 a machine, however Grub2's capabilities for booting a machine are extremely
 limited when compared to a tool like iPXE. It is also worth noting the bulk
 of Ironic's example configurations utilize iPXE, including whole activities
-like unmanaged hardware introspection with ironic-inspector.
-
-For extra context, unmanaged introspection is when you ask ironic-inspector
-to inspect a machine *instead* of asking ironic. In other words, using
-``openstack baremetal introspection start <node>`` versus
-``baremetal node inspect <node>`` commands. This does require the
-:oslo.config:option:`inspector.require_managed_boot` setting be set to ``true``.
+like unmanaged hardware introspection with agent inspect interface.
 
 Driver support for Deployment with Secure Boot
 ----------------------------------------------
@@ -473,7 +467,7 @@ see :doc:`/admin/power-sync`. When this issue has been corrected with the
 credential, modern Ironic users should find the node recover automatically.
 
 .. warning::
-   Operators re-using the same credentials with a centrally managed credential
+   Operators reusing the same credentials with a centrally managed credential
    management system with separate BMC configuration should be careful about
    credential rotations. These operators risk causing the account to access the
    BMC to be locked out, and should likely explicitly set nodes to ``maintenance``
@@ -486,7 +480,7 @@ credential, modern Ironic users should find the node recover automatically.
 The Ironic project recommends:
 
 * Unique passwords be used for each baremetal node.
-* Operators leverage good password practices by not re-using the credentials
+* Operators leverage good password practices by not reusing the credentials
   for other tools or systems.
 
 Disk Images
