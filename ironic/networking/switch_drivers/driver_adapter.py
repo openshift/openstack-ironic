@@ -154,10 +154,10 @@ class NetworkingDriverAdapter:
                     translator = self.driver_translators[driver_type]
                 else:
                     error_msg = (_("No driver translator registered for "
-                                  "switch: %(switch_name)s, with driver type: "
-                                  "%(driver_type)s") %
-                                 {"switch_name": switch_name,
-                                  "driver_type": driver_type})
+                                   "switch: %(switch_name)s, with driver "
+                                   "type: %(driver_type)s") %
+                                 {'switch_name': switch_name,
+                                  'driver_type': driver_type})
                     raise exception.ConfigInvalid(error_msg=error_msg)
 
                 translation = translator.translate_config(switch_name, config)

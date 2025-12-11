@@ -1603,7 +1603,7 @@ class RedfishManagementTestCase(db_base.DbTestCase):
                 {'task_monitor': '/task/123', 'url': 'test1'}]}
         self.node.driver_internal_info = driver_internal_info
         self.node.service_step = {'interface': 'management',
-                                   'step': 'update_firmware'}
+                                  'step': 'update_firmware'}
         self.node.save()
 
         management = redfish_mgmt.RedfishManagement()
@@ -1633,7 +1633,7 @@ class RedfishManagementTestCase(db_base.DbTestCase):
                 {'task_monitor': '/task/123', 'url': 'test1'}]}
         self.node.driver_internal_info = driver_internal_info
         self.node.deploy_step = {'interface': 'management',
-                                  'step': 'update_firmware'}
+                                 'step': 'update_firmware'}
         self.node.save()
 
         management = redfish_mgmt.RedfishManagement()

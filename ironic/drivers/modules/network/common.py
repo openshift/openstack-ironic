@@ -652,8 +652,8 @@ class NeutronVIFPortIDMixin(VIFPortIDMixin):
                                                       vif_id=vif_info['id'])
             else:
                 LOG.warning(('_vif_attach_tbn: No trait generated networking '
-                              'actions to apply or ports to attach to the '
-                              'node %(node)s.'),
+                             'actions to apply or ports to attach to the '
+                             'node %(node)s.'),
                             {'node': task.node.uuid})
                 return
 

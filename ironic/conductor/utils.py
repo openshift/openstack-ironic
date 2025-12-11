@@ -896,7 +896,7 @@ def cleanup_rescuewait_timeout(task):
 
 
 def inspecting_error_handler(task, logmsg, errmsg=None, traceback=False,
-                              tear_down_inspection=True):
+                             tear_down_inspection=True):
     """Handle inspection failures and clean up resources.
 
     :param task: a TaskManager instance.

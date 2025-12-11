@@ -1373,8 +1373,7 @@ def place_loaders_for_boot(base_path: str | os.PathLike):
         # ensure that we have somewhere to copy the files to
         base_path.mkdir(mode=dir_mode, parents=True, exist_ok=True)
     except OSError as e:
-        msg = (_('Failed to create bootloader destination path. Error: %s')
-                % e)
+        msg = _('Failed to create bootloader destination path. Error: %s') % e
         raise exception.IncorrectConfiguration(msg)
 
     for dest, src in loaders.items():

@@ -1945,7 +1945,7 @@ class InspectingErrorHandlerTestCase(db_base.DbTestCase):
                        autospec=True)
     @mock.patch.object(conductor_utils, 'LOG', autospec=True)
     def test_inspecting_error_handler(self, log_mock, mock_restore,
-                                       mock_power_on):
+                                      mock_power_on):
         mock_power_on.return_value = None
         msg = 'foo'
         with task_manager.acquire(self.context, self.node.uuid) as task:
@@ -1963,7 +1963,7 @@ class InspectingErrorHandlerTestCase(db_base.DbTestCase):
     @mock.patch.object(conductor_utils, 'restore_power_state_if_needed',
                        autospec=True)
     def test_inspecting_error_handler_no_teardown(self, mock_restore,
-                                                   mock_power_on):
+                                                  mock_power_on):
         with task_manager.acquire(self.context, self.node.uuid) as task:
             conductor_utils.inspecting_error_handler(task, 'foo',
                                                      tear_down_inspection=False)
@@ -1979,8 +1979,8 @@ class InspectingErrorHandlerTestCase(db_base.DbTestCase):
                        autospec=True)
     @mock.patch.object(conductor_utils, 'LOG', autospec=True)
     def test_inspecting_error_handler_network_error(self, log_mock,
-                                                     mock_restore,
-                                                     mock_power_on):
+                                                    mock_restore,
+                                                    mock_power_on):
         mock_power_on.return_value = None
         msg = 'foo'
         with task_manager.acquire(self.context, self.node.uuid) as task:

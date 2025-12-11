@@ -6745,7 +6745,7 @@ ORHMKeXMO8fcK0By7CiMKwHSXCoEQgfQhWwpMdSsO8LgHCjh87DQc= """
     @mock.patch.object(rpcapi.ConductorAPI, 'do_node_service', autospec=True)
     @mock.patch.object(api_node, '_check_service_steps', autospec=True)
     def test_service_with_runbook_disable_ramdisk(self, mock_check,
-                                                   mock_rpcapi, mock_policy):
+                                                  mock_rpcapi, mock_policy):
         objects.TraitList.create(self.context, self.node.id, ['CUSTOM_1'])
         self.node.refresh()
 

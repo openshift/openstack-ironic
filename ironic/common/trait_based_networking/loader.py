@@ -91,13 +91,13 @@ class ConfigLoader(object):
         """Load Trait Based Networking configuration file for later use"""
         if not CONF.conductor.enable_trait_based_networking:
             LOG.debug('Trait Based Networking not enabled, skipping loading '
-                        'configuration file.')
+                      'configuration file.')
             return
 
         LOG.info(('Loading Trait Based Networking configuration located at '
                   '%(file_location)s'),
-                 {'file_location': \
-                  CONF.conductor.trait_based_networking_config_file })
+                 {'file_location':
+                  CONF.conductor.trait_based_networking_config_file})
         try:
             self._config_file = ConfigFile(
                 CONF.conductor.trait_based_networking_config_file)
@@ -105,9 +105,10 @@ class ConfigLoader(object):
             self._valid = False
             LOG.error(('Failed to load Trait Based Networking configuration '
                        'file located at \'%(file)s\', error: %(err)s'), {
-                        'file': \
-                            CONF.conductor.trait_based_networking_config_file,
-                        'err': err})
+                           'file':
+                               CONF.conductor.
+                               trait_based_networking_config_file,
+                           'err': err})
             return
 
         valid, reasons = self._config_file.validate()

@@ -6185,7 +6185,7 @@ class ManagerSyncPowerStatesTestCase(mgr_utils.CommonMixIn,
         get_nodeinfo_mock.return_value = self._get_nodeinfo_list_response()
         mapped_mock.return_value = True
         task = self._create_task(node_attrs=dict(uuid=self.node.uuid,
-                                                  driver_internal_info={}))
+                                                 driver_internal_info={}))
         acquire_mock.side_effect = self._get_acquire_side_effect(task)
 
         self.service._sync_power_states(self.context)
@@ -6202,8 +6202,8 @@ class ManagerSyncPowerStatesTestCase(mgr_utils.CommonMixIn,
         sync_mock.assert_called_once_with(task, mock.ANY)
 
     def test_single_node_with_firmware_update(self, get_nodeinfo_mock,
-                                               mapped_mock, acquire_mock,
-                                               sync_mock):
+                                              mapped_mock, acquire_mock,
+                                              sync_mock):
         get_nodeinfo_mock.return_value = self._get_nodeinfo_list_response()
         mapped_mock.return_value = True
         task = self._create_task(
@@ -7578,9 +7578,9 @@ class ManagerCheckInspectWaitTimeoutsTestCase(mgr_utils.CommonMixIn,
                                     purpose=mock.ANY)] * 2,
                          acquire_mock.call_args_list)
         process_event_call = mock.call('fail', callback=mock.ANY,
-                                        call_args=mock.ANY,
-                                        err_handler=mock.ANY,
-                                        target_state=None)
+                                       call_args=mock.ANY,
+                                       err_handler=mock.ANY,
+                                       target_state=None)
         self.assertEqual([process_event_call] * 2,
                          self.task.process_event.call_args_list)
 

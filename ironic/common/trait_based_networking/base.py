@@ -383,8 +383,8 @@ class Network:
     def from_vif_info(cls, vif_info):
         """Helper method to create Networks from vif_info dictionaries"""
         return cls(vif_info['id'], # vif_info is guaranteed to have 'id'.
-                       vif_info.get('name'),
-                       vif_info.get('tags'))
+                   vif_info.get('name'),
+                   vif_info.get('tags'))
 
 
 @dataclass(frozen=True)
