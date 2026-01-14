@@ -1,0 +1,16 @@
+---
+features:
+  - |
+    Adds an experimental ``reattach_networking`` service step to the Neutron
+    network interface. This service step allows operators to refresh network
+    port bindings on active bare metal instances without requiring a reboot
+    or IPA deployment. This is useful for advanced networking scenarios such
+    as VXLAN topology changes or network infrastructure migrations.
+
+    The service step can be invoked using::
+
+      openstack baremetal node service <node-uuid> \
+        --service-steps '[{"interface": "network", "step": "reattach_networking"}]'
+
+    This step does not require booting IPA (``requires_ramdisk=False``) and
+    is only available when using ``network_interface=neutron``.
