@@ -944,7 +944,7 @@ RELEASE_MAPPING = {
     # make it below. To release, we will preserve a version matching
     # the release as a separate block of text, like above.
     'master': {
-        'api': '1.106',
+        'api': '1.107',
         'rpc': '1.62',
         'networking_rpc': '1.0',
         'objects': {
@@ -989,6 +989,7 @@ RELEASE_MAPPING['2023.2'] = RELEASE_MAPPING['23.0']
 RELEASE_MAPPING['2024.1'] = RELEASE_MAPPING['24.1']
 RELEASE_MAPPING['2024.2'] = RELEASE_MAPPING['26.1']
 RELEASE_MAPPING['2025.1'] = RELEASE_MAPPING['29.0']
+RELEASE_MAPPING['2025.2'] = RELEASE_MAPPING['32.0']
 
 # List of available versions with named versions first; 'master' is excluded.
 RELEASE_VERSIONS = sorted(set(RELEASE_MAPPING) - {'master'}, reverse=True)
