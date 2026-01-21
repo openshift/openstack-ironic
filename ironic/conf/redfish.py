@@ -145,6 +145,14 @@ opts = [
                       'start applying firmware, while others can begin '
                       'immediately. This timeout helps determine which '
                       'behavior the hardware exhibits.')),
+    cfg.IntOpt('firmware_update_overall_timeout',
+               min=0,
+               default=7200,
+               help=_('Maximum time (in seconds) allowed for the entire '
+                      'firmware update operation to complete. This provides '
+                      'a safety net for firmware updates that get stuck. '
+                      'Set to 0 to disable this timeout (not recommended). '
+                      'Default is 7200 seconds (2 hours).')),
     cfg.StrOpt('firmware_source',
                choices=[('http', _('If firmware source URL is also HTTP, then '
                                    'serve from original location, otherwise '
@@ -205,6 +213,21 @@ opts = [
                       '$default_inspection_hooks. Hooks can be added before '
                       'or after the defaults like this: '
                       '"prehook,$default_hooks,posthook".')),
+    cfg.IntOpt('post_boot_retry_attempts',
+               min=1,
+               default=6,
+               help=_('Maximum number of retry attempts when BMC rejects '
+                      'boot device changes during POST (Power-On Self-Test). '
+                      'Some BMCs (e.g. HPE iLO) reject boot device '
+                      'modifications while the system is in POST after a '
+                      'firmware update or reboot.')),
+    cfg.IntOpt('post_boot_retry_delay',
+               min=1,
+               default=5,
+               help=_('Minimum delay in seconds between retry attempts '
+                      'for POST-related boot device errors. Exponential '
+                      'backoff is applied, starting from this value up to '
+                      '6x this value.')),
 ]
 
 
