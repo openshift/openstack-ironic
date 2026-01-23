@@ -144,7 +144,8 @@ class TraitBasedNetworkingFilterParserTestCase(base.TestCase):
                                     **subtest.port_args[i]
                                 )
                             ),
-                            tbn.Network("test_net_id", "test_network", []),
+                            tbn.Network("test_net_id", "test_network",
+                                        frozenset()),
                         ),
                         subtest.expected_eval_result[i],
                     )

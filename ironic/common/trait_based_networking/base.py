@@ -10,7 +10,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from abc import abstractmethod
+from dataclasses import dataclass
+from dataclasses import fields
+from dataclasses import MISSING
 import enum
+from typing import ClassVar
 
 import ironic.common.exception as exc
 from ironic.common.i18n import _
@@ -240,50 +245,39 @@ class FilterExpression(object):
         return str(self) == str(other)
 
 
-class TraitAction(object):
+@dataclass(frozen=True)
+class TraitAction:
     """An action defined by a NetworkTrait
 
     Each action contains a filter (FilterExpression) that determines which
     (port, network) pairs the action can apply to.
     """
-    NECESSARY_KEYS = [
-        'action',
-        'filter',
-    ]
-    OPTIONAL_KEYS = [
-        'max_count',
-        'min_count',
-    ]
-    ALL_KEYS = OPTIONAL_KEYS + NECESSARY_KEYS
+    NECESSARY_KEYS: ClassVar[list[str]]
+    ALL_KEYS: ClassVar[list[str]]
 
-    def __init__(self, trait_name, action, filter_expression,
-                 min_count=None, max_count=None):
-        """Init the TraitAction
-
-        :param trait_name: Name of the trait this action belongs to.
-        :param action: An Actions object
-        :param filter_expression: A FilterExpression object
-        :param min_count: An optional minimum number of matches this action
-            must meet before it can be applied.
-        :param max_count: An optional maximum number of matches this action
-            can apply to.
-        """
-        self.trait_name = trait_name
-        self.action = action
-        self.filter_expression = filter_expression
-        self.min_count = min_count
-        self.max_count = max_count
+    trait_name: str
+    action: Actions
+    filter: 'FilterExpression'
+    min_count: int | None = None
+    max_count: int | None = None
 
     def matches(self, portlike, network):
         """Check if filter expression matches the port, network pairing."""
-        return self.filter_expression.eval(portlike, network)
+        return self.filter.eval(portlike, network)
 
-    def __eq__(self, other):
-        return (self.trait_name == other.trait_name
-                and self.action == other.action
-                and self.filter_expression == other.filter_expression
-                and self.min_count == other.min_count
-                and self.max_count == other.max_count)
+
+# Keys from the config file action dict (excludes trait_name, which comes
+# from the parent trait key rather than the action dict itself).
+TraitAction.NECESSARY_KEYS = [
+    f.name for f in fields(TraitAction)
+    if f.name != 'trait_name'
+    and f.default is MISSING
+    and f.default_factory is MISSING
+]
+TraitAction.ALL_KEYS = [
+    f.name for f in fields(TraitAction)
+    if f.name != 'trait_name'
+]
 
 
 class NetworkTrait(object):
@@ -322,24 +316,30 @@ class NetworkTrait(object):
         return self.order == other.order
 
 
-class PrimordialPort(object):
+@dataclass(frozen=True)
+class PrimordialPort:
     """A set of common attributes belonging to both Ports and Portgroups"""
-    def __init__(self, ironic_port_like_obj):
-        # NOTE(clif): Both ironic port and portgroups should support the
-        # attributes below.
-        self.id = ironic_port_like_obj.id
-        self.uuid = ironic_port_like_obj.uuid
-        self.address = ironic_port_like_obj.address
-        self.category = ironic_port_like_obj.category
-        self.physical_network = ironic_port_like_obj.physical_network
-        self.vendor = ironic_port_like_obj.vendor
+    id: int
+    uuid: str
+    address: str
+    category: str | None
+    physical_network: str | None
+    vendor: str | None
 
 
+@dataclass(frozen=True)
 class Port(PrimordialPort):
     """A Port used internally to query and match to TraitActions"""
     @classmethod
     def from_ironic_port(cls, ironic_port):
-        return Port(ironic_port)
+        return cls(
+            id=ironic_port.id,
+            uuid=ironic_port.uuid,
+            address=ironic_port.address,
+            category=ironic_port.category,
+            physical_network=ironic_port.physical_network,
+            vendor=ironic_port.vendor,
+        )
 
     def is_port(self):
         return True
@@ -348,11 +348,19 @@ class Port(PrimordialPort):
         return False
 
 
+@dataclass(frozen=True)
 class Portgroup(PrimordialPort):
     """A Portgroup used internally to query and match to TraitActions"""
     @classmethod
     def from_ironic_portgroup(cls, ironic_portgroup):
-        return Portgroup(ironic_portgroup)
+        return cls(
+            id=ironic_portgroup.id,
+            uuid=ironic_portgroup.uuid,
+            address=ironic_portgroup.address,
+            category=ironic_portgroup.category,
+            physical_network=ironic_portgroup.physical_network,
+            vendor=ironic_portgroup.vendor,
+        )
 
     def is_port(self):
         return False
@@ -361,45 +369,41 @@ class Portgroup(PrimordialPort):
         return True
 
 
-class Network(object):
+@dataclass(frozen=True)
+class Network:
     """A Network (aka vif)
 
     Used to match against TraitAction FilterExpressions
     """
-    def __init__(self, network_id, name, tags):
-        self.id = network_id
-        self.name = name
-        self.tags = tags
+    id: str
+    name: str
+    tags: frozenset[str]
 
     @classmethod
     def from_vif_info(cls, vif_info):
         """Helper method to create Networks from vif_info dictionaries"""
-        return Network(vif_info['id'], # vif_info is guaranteed to have 'id'.
+        return cls(vif_info['id'], # vif_info is guaranteed to have 'id'.
                        vif_info.get('name'),
                        vif_info.get('tags'))
 
 
-class RenderedAction(object):
+@dataclass(frozen=True)
+class RenderedAction:
     """A base class for Actions which are ready to apply"""
-    def __init__(self, trait_action, node_uuid):
-        self._trait_action = trait_action
-        self._node_uuid = node_uuid
-
-    def __eq__(self, other):
-        return (self._trait_action == other._trait_action
-                and self._node_uuid == other._node_uuid)
+    trait_action: TraitAction
+    node_uuid: str
 
 
 class AttachAction(RenderedAction):
     """Base class for actions which will attach objects to networks"""
-    def __init__(self, trait_action, node_uuid):
-        super().__init__(trait_action, node_uuid)
 
+    @abstractmethod
     def portlike_uuid(self):
-        return self._get_portlike_uuid()
+        ...
 
+    @abstractmethod
     def get_portlike_object(self, task):
-        return self._get_portlike_object(task)
+        ...
 
 
 class AttachPort(AttachAction):
@@ -412,19 +416,19 @@ class AttachPort(AttachAction):
         self._port_uuid = port_uuid
         self._network_id = network_id
 
-    def _get_portlike_object(self, task):
+    def get_portlike_object(self, task):
         for port in task.ports:
             if port.uuid == self._port_uuid:
                 return port
         return None
 
-    def _get_portlike_uuid(self):
+    def portlike_uuid(self):
         return self._port_uuid
 
     def __str__(self):
         return _(f"Attach port '{self._port_uuid}' on node "
-                 f"'{self._node_uuid}' to network '{self._network_id}' "
-                 f"via trait {self._trait_action.trait_name}")
+                 f"'{self.node_uuid}' to network '{self._network_id}' "
+                 f"via trait {self.trait_action.trait_name}")
 
     def __eq__(self, other):
         return (isinstance(other, AttachPort)
@@ -444,19 +448,19 @@ class AttachPortgroup(AttachAction):
         self._portgroup_uuid = portgroup_uuid
         self._network_id = network_id
 
-    def _get_portlike_object(self, task):
+    def get_portlike_object(self, task):
         for portgroup in task.portgroups:
             if portgroup.uuid == self._portgroup_uuid:
                 return portgroup
         return None
 
-    def _get_portlike_uuid(self):
+    def portlike_uuid(self):
         return self._portgroup_uuid
 
     def __str__(self):
         return _(f"Attach portgroup '{self._portgroup_uuid}' on node "
-                 f"'{self._node_uuid}' to network '{self._network_id}'"
-                 f"via trait {self._trait_action.trait_name}")
+                 f"'{self.node_uuid}' to network '{self._network_id}'"
+                 f"via trait {self.trait_action.trait_name}")
 
     def __eq__(self, other):
         return (isinstance(other, AttachPortgroup)
@@ -473,8 +477,8 @@ class NoMatch(RenderedAction):
 
     def __str__(self):
         return _(f"No match found for action under trait "
-                 f"'{self._trait_action.trait_name}' "
-                 f"on node '{self._node_uuid}': {self._reason}")
+                 f"'{self.trait_action.trait_name}' "
+                 f"on node '{self.node_uuid}': {self._reason}")
 
     def __eq__(self, other):
         return (isinstance(other, NoMatch)

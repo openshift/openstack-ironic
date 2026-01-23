@@ -47,7 +47,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="clover",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
@@ -81,7 +81,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="clover",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.NoMatch(
                     tbn_base.TraitAction(
@@ -119,7 +119,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="cogwork",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
@@ -151,7 +151,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     physical_network="hypernet",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPortgroup(
                     tbn_base.TraitAction(
@@ -185,7 +185,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     category="red",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.NoMatch(
                     tbn_base.TraitAction(
@@ -223,7 +223,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     category="red",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPortgroup(
                     tbn_base.TraitAction(
@@ -284,7 +284,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                 )
             ],
             [],
-            [tbn_base.Network("fake_net_id", "fake_net_name", [])],
+            [tbn_base.Network("fake_net_id", "fake_net_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
