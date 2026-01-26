@@ -105,8 +105,8 @@ opts = [
     cfg.IntOpt('sync_power_state_workers',
                default=8, min=1,
                help=_('The maximum number of worker threads that can be '
-                      'started simultaneously to sync nodes power states from '
-                      'the periodic task.')),
+                      'started simultaneously to sync nodes power states '
+                      'from the periodic task.')),
     cfg.IntOpt('periodic_max_workers',
                default=8,
                help=_('Maximum number of worker threads that can be started '
@@ -699,6 +699,42 @@ opts = [
             "Log steps at the start/end of cleaning/servicing/deployment "
             "to the conductor service log (WARNING for aborted/failure, "
             "INFO otherwise.")),
+
+    # Trait Based Networking related configuration.
+    cfg.BoolOpt(
+        'enable_trait_based_networking',
+        default=False,
+        help=(
+            'Enables Trait Based Networking (TBN) feature if True. When '
+            'enabled, will apply traits defined in the TBN configuration file '
+            'to networking actions when building instances with relevant '
+            'traits defined. When False the prior behavior of mapping ports '
+            'by physical_network is maintained.'
+        )),
+    cfg.StrOpt(
+        'trait_based_networking_config_file',
+        default='/etc/ironic/trait_based_networking.yaml',
+        help=(
+            'The location of the configuration file for trait based '
+            'configuration. Ironic will load this configuration file if TBN '
+            'is enabled and apply the traits defined when building and '
+            'attaching networks to node instances. Ironic will also reload '
+            'this file if it detects the file has changed.'
+        )),
+    cfg.BoolOpt('enable_health_monitoring',
+                default=True,
+                mutable=True,
+                help=_('Enable automatic hardware health monitoring for '
+                       'nodes. When enabled, the conductor will periodically '
+                       'query the management interface of nodes during power '
+                       'state synchronization to retrieve hardware health '
+                       'status from the BMC. Health information is stored in '
+                       'the node.health field and changes are recorded in '
+                       'node history. Drivers that do not support health '
+                       'monitoring are automatically skipped. Note: this '
+                       'adds one additional BMC query per node during each '
+                       'power sync cycle, which may impact performance in '
+                       'large deployments.')),
 ]
 
 
