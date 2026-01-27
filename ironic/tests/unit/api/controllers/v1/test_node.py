@@ -39,6 +39,7 @@ from ironic.common import boot_modes
 from ironic.common import components
 from ironic.common import driver_factory
 from ironic.common import exception
+from ironic.common import health_states
 from ironic.common import indicator_states
 from ironic.common import policy
 from ironic.common import states
@@ -192,6 +193,25 @@ class TestListNodes(test_api_base.BaseApiTest):
         data = self.get_json(
             '/nodes?fields=uuid,instance_name',
             headers={api_base.Version.string: '1.99'},
+            expect_errors=True)
+        self.assertEqual(http_client.NOT_ACCEPTABLE, data.status_int)
+
+    def test_health_field_with_api_version(self):
+        health = health_states.HealthState.OK.value
+        obj_utils.create_test_node(self.context,
+                                   chassis_id=self.chassis.id,
+                                   health=health)
+        # Test with API version 1.109 - health should be visible
+        data = self.get_json(
+            '/nodes?fields=uuid,health',
+            headers={api_base.Version.string: '1.109'})
+        self.assertIn('health', data['nodes'][0])
+        self.assertEqual(health, data['nodes'][0]['health'])
+
+        # Test with older API version - health should not be visible
+        data = self.get_json(
+            '/nodes?fields=uuid,health',
+            headers={api_base.Version.string: '1.106'},
             expect_errors=True)
         self.assertEqual(http_client.NOT_ACCEPTABLE, data.status_int)
 
@@ -6686,35 +6706,82 @@ ORHMKeXMO8fcK0By7CiMKwHSXCoEQgfQhWwpMdSsO8LgHCjh87DQc= """
                             expect_errors=True)
         self.assertEqual(http_client.NOT_ACCEPTABLE, ret.status_code)
 
+    @mock.patch.object(rpcapi.ConductorAPI, 'do_node_service', autospec=True)
+    @mock.patch.object(api_node, '_check_service_steps', autospec=True)
+    def test_service_disable_ramdisk(self, mock_check, mock_rpcapi):
+        self.node.provision_state = states.SERVICEHOLD
+        self.node.save()
+        service_steps = [{"step": "upgrade_firmware", "interface": "deploy"}]
+        ret = self.put_json('/nodes/%s/states/provision' % self.node.uuid,
+                            {'target': states.VERBS['service'],
+                             'service_steps': service_steps,
+                             'disable_ramdisk': True},
+                            headers={api_base.Version.string: "1.108"})
+        self.assertEqual(http_client.ACCEPTED, ret.status_code)
+        self.assertEqual(b'', ret.body)
+        mock_check.assert_called_once_with(service_steps)
+        mock_rpcapi.assert_called_once_with(mock.ANY, mock.ANY,
+                                            self.node.uuid,
+                                            service_steps, True,
+                                            topic='test-topic')
+
+    @mock.patch.object(rpcapi.ConductorAPI, 'do_node_service', autospec=True)
+    @mock.patch.object(api_node, '_check_service_steps', autospec=True)
+    def test_service_disable_ramdisk_old_api(self, mock_check, mock_rpcapi):
+        self.node.provision_state = states.SERVICEHOLD
+        self.node.save()
+        service_steps = [{"step": "upgrade_firmware", "interface": "deploy"}]
+        ret = self.put_json('/nodes/%s/states/provision' % self.node.uuid,
+                            {'target': states.VERBS['service'],
+                             'service_steps': service_steps,
+                             'disable_ramdisk': True},
+                            headers={api_base.Version.string: "1.106"},
+                            expect_errors=True)
+        self.assertEqual(http_client.NOT_ACCEPTABLE, ret.status_code)
+        mock_rpcapi.assert_not_called()
+
     @mock.patch.object(api_utils, 'check_runbook_policy_and_retrieve',
                        autospec=True)
-    @mock.patch.object(rpcapi.ConductorAPI, 'do_node_clean', autospec=True)
-    @mock.patch.object(api_node, '_check_clean_steps', autospec=True)
-    def test_clean_with_runbook_disable_ramdisk(self, mock_check,
-                                                 mock_rpcapi, mock_policy):
+    @mock.patch.object(rpcapi.ConductorAPI, 'do_node_service', autospec=True)
+    @mock.patch.object(api_node, '_check_service_steps', autospec=True)
+    def test_service_with_runbook_disable_ramdisk(self, mock_check,
+                                                   mock_rpcapi, mock_policy):
         objects.TraitList.create(self.context, self.node.id, ['CUSTOM_1'])
         self.node.refresh()
 
-        self.node.provision_state = states.MANAGEABLE
+        self.node.provision_state = states.SERVICEHOLD
         self.node.save()
 
         runbook = mock.Mock()
         runbook.name = 'CUSTOM_1'
-        runbook.steps = [{"step": "erase_devices", "interface": "deploy",
+        runbook.steps = [{"step": "upgrade_firmware", "interface": "deploy",
                           "args": {}}]
         runbook.disable_ramdisk = True
         mock_policy.return_value = runbook
-
         ret = self.put_json('/nodes/%s/states/provision' % self.node.uuid,
-                            {'target': states.VERBS['clean'],
+                            {'target': states.VERBS['service'],
                              'runbook': runbook.name},
-                            headers={api_base.Version.string: "1.106"})
+                            headers={api_base.Version.string: "1.108"})
         self.assertEqual(http_client.ACCEPTED, ret.status_code)
         self.assertEqual(b'', ret.body)
+        mock_policy.assert_has_calls([mock.call('baremetal:runbook:use',
+                                                runbook.name)])
         mock_check.assert_called_once_with(runbook.steps)
         mock_rpcapi.assert_called_once_with(mock.ANY, mock.ANY,
                                             self.node.uuid, runbook.steps,
                                             True, topic='test-topic')
+
+    def test_disable_ramdisk_wrong_target(self):
+        self.node.provision_state = states.AVAILABLE
+        self.node.save()
+        ret = self.put_json('/nodes/%s/states/provision' % self.node.uuid,
+                            {'target': states.VERBS['active'],
+                             'disable_ramdisk': True},
+                            headers={api_base.Version.string: "1.108"},
+                            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, ret.status_code)
+        self.assertIn('disable_ramdisk is supported only with manual '
+                      'cleaning or servicing', ret.json['error_message'])
 
     def test_adopt_raises_error_before_1_17(self):
         """Test that a lower API client cannot use the adopt verb"""
