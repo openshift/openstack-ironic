@@ -1106,14 +1106,14 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
 
         task, interface = self._test__check_node_redfish_firmware_update()
         task.upgrade_lock.assert_called_once_with()
-        info_calls = [
-            mock.call('Firmware update task completed for node %(node)s, '
+        debug_calls = [
+            mock.call('Redfish task completed for node %(node)s, '
                       'firmware %(firmware_image)s: %(messages)s.',
                       {'node': self.node.uuid,
                        'firmware_image': 'https://bmc/v1.0.1',
                        'messages': 'Firmware update done'})]
 
-        log_mock.info.assert_has_calls(info_calls)
+        log_mock.debug.assert_has_calls(debug_calls)
         # NOTE(iurygregory): _validate_resources_stability is now called
         # in _continue_updates before power operations, not in
         # _handle_task_completion
@@ -1500,7 +1500,7 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                     'timeout')
 
                 # Mock time progression to exceed timeout
-                time_mock.side_effect = [0, 350]  # Exceeds 300 second timeout
+                time_mock.side_effect = [0, 500]
 
                 # Should raise RedfishError due to timeout
                 self.assertRaises(exception.RedfishError,
@@ -1584,7 +1584,7 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                     'manager error')
 
                 # Mock time progression to exceed timeout
-                time_mock.side_effect = [0, 350]
+                time_mock.side_effect = [0, 500]
 
                 # Should raise RedfishError due to timeout
                 self.assertRaises(exception.RedfishError,
@@ -1612,7 +1612,7 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                     'chassis error')
 
                 # Mock time progression to exceed timeout
-                time_mock.side_effect = [0, 350]
+                time_mock.side_effect = [0, 500]
 
                 # Should raise RedfishError due to timeout
                 self.assertRaises(exception.RedfishError,
@@ -1745,9 +1745,9 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                     'http://test', mock_response, mock_response)
 
                 # Mock time progression: start at 0, try once at 10, timeout
-                # at 350, this allows at least one loop iteration to trigger
+                # at 500, this allows at least one loop iteration to trigger
                 # the exception
-                time_mock.side_effect = [0, 10, 350]
+                time_mock.side_effect = [0, 10, 500]
 
                 # Should raise RedfishError due to timeout
                 self.assertRaises(exception.RedfishError,
@@ -1802,7 +1802,9 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
             )
             # Verify BMC version check tracking is set up
             info = task.node.driver_internal_info
-            self.assertIn('bmc_fw_check_start_time', info)
+            fw_updates = info.get('redfish_fw_updates', [])
+            self.assertEqual(1, len(fw_updates))
+            self.assertIn('bmc_check_start_time', fw_updates[0])
             self.assertIn('bmc_fw_version_before_update', info)
             self.assertEqual(states.SERVICEWAIT, result)
 
@@ -1847,7 +1849,9 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
             )
             # Verify BMC version check tracking is set up
             info = task.node.driver_internal_info
-            self.assertIn('bmc_fw_check_start_time', info)
+            fw_updates = info.get('redfish_fw_updates', [])
+            self.assertEqual(1, len(fw_updates))
+            self.assertIn('bmc_check_start_time', fw_updates[0])
             self.assertIn('bmc_fw_version_before_update', info)
             self.assertEqual(states.SERVICEWAIT, result)
 
@@ -2014,7 +2018,9 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
 
             # Verify BMC version check tracking is set up
             info = task.node.driver_internal_info
-            self.assertIn('bmc_fw_check_start_time', info)
+            fw_updates = info.get('redfish_fw_updates', [])
+            self.assertEqual(1, len(fw_updates))
+            self.assertIn('bmc_check_start_time', fw_updates[0])
             self.assertIn('bmc_fw_version_before_update', info)
 
     @mock.patch.object(deploy_utils, 'set_async_step_flags', autospec=True)
@@ -2094,15 +2100,14 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
         mock_parse_isotime.return_value = start_time
         mock_utcnow.return_value = current_time
         settings = [{'component': 'bmc', 'url': 'http://bmc/v1.0.0',
-                     'wait': 300, 'task_monitor': '/tasks/1'}]
+                     'wait': 300, 'task_monitor': '/tasks/1',
+                     'bmc_check_start_time': '2025-01-01T00:00:00.000000'}]
 
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             # Set up node with BMC version checking in progress
             task.node.set_driver_internal_info(
                 'redfish_fw_updates', settings)
-            task.node.set_driver_internal_info(
-                'bmc_fw_check_start_time', '2025-01-01T00:00:00.000000')
 
             # Mock BMC is unresponsive
             mock_get_bmc_version.return_value = None
@@ -2444,3 +2449,77 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                 '%(node)s. System was already rebooted. '
                 'Proceeding with continuation.',
                 {'node': task.node.uuid})
+
+    @mock.patch.object(manager_utils, 'node_power_action', autospec=True)
+    @mock.patch.object(redfish_utils, 'get_task_monitor', autospec=True)
+    def test_bios_handle_task_starting_sets_flag_correctly(
+            self, mock_get_task_monitor, mock_power_action):
+        """Test _handle_bios_task_starting sets flag correctly with lock.
+
+        This test verifies that when _handle_bios_task_starting is called:
+        1. The bios_reboot_triggered flag is set
+        2. task.node reflects the flag immediately after the method returns
+
+        If node = task.node were captured BEFORE upgrade_lock (the bug),
+        this test would fail because task.node would be stale and not
+        have the flag.
+
+        With the correct order (upgrade_lock first, then node = task.node),
+        the test passes because changes are saved to the correct object.
+        """
+        settings = [{'component': 'bios', 'url': 'http://bios/v1.0.1',
+                     'task_monitor': '/tasks/1'}]
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=False) as task:
+            # Set up node with BIOS update in progress
+            task.node.set_driver_internal_info('redfish_fw_updates', settings)
+            task.node.clean_step = {'step': 'update', 'interface': 'firmware'}
+            task.node.save()
+
+            # Mock task monitor showing STARTING state
+            mock_task_monitor = mock.Mock()
+            mock_task = mock.Mock()
+            mock_task.task_state = sushy.TASK_STATE_STARTING
+            mock_task_monitor.get_task.return_value = mock_task
+            mock_get_task_monitor.return_value = mock_task_monitor
+
+            # Mock upgrade_lock to simulate what happens in production:
+            # Replace task.node with a fresh copy from DB
+            original_upgrade_lock = task.upgrade_lock
+            def mock_upgrade_lock():
+                original_upgrade_lock()
+                # Simulate production behavior: replace task.node
+                # with fresh copy
+                task.node = objects.Node.get(self.context, task.node.uuid)
+
+            with mock.patch.object(task, 'upgrade_lock',
+                                 side_effect=mock_upgrade_lock,
+                                 autospec=True):
+                # Call the actual method being tested
+                firmware_interface = redfish_fw.RedfishFirmware()
+                result = firmware_interface._handle_bios_task_starting(
+                    task, mock_task_monitor, settings, settings[0])
+
+            # Verify reboot was triggered
+            self.assertTrue(result,
+                            'Method should return True when reboot triggered')
+            mock_power_action.assert_called_once()
+
+            # CRITICAL TEST: Verify task.node has the flag
+            # If the order were wrong (node captured before upgrade_lock),
+            # task.node would be a stale object without the flag
+            current_settings = task.node.driver_internal_info.get(
+                'redfish_fw_updates', [{}])
+            self.assertTrue(
+                current_settings[0].get('bios_reboot_triggered'),
+                'Flag must be in task.node after method returns. '
+                'If this fails, node was captured before upgrade_lock.')
+
+            # Verify the flag is also persisted to DB
+            task.node.refresh()
+            refreshed_settings = task.node.driver_internal_info.get(
+                'redfish_fw_updates', [{}])
+            self.assertTrue(
+                refreshed_settings[0].get('bios_reboot_triggered'),
+                'Flag must be persisted to database')
