@@ -1303,7 +1303,11 @@ def fast_track_able(task):
             and task.node.last_error is None
             # NOTE(dtantsur): Fast track makes zero sense for servicing and
             # may prevent normal clean-up from happening.
-            and task.node.provision_state not in states.SERVICING_STATES)
+            and task.node.provision_state not in states.SERVICING_STATES
+            # NOTE: Firmware updates require proper cleanup (e.g., virtual
+            # media ejection) and should not use fast-track.
+            and not task.node.driver_internal_info.get('redfish_fw_updates')
+            and not task.node.driver_internal_info.get('firmware_updates'))
 
 
 def value_within_timeout(value, timeout):
@@ -1558,36 +1562,6 @@ def hash_password(password=''):
     :param password: password to be hashed
     """
     return secretutils.crypt_password(password, make_salt())
-
-
-def get_attached_vif(port):
-    """Get any attached vif ID for the port
-
-    :param port: The port object upon which to check for a vif
-                 record.
-    :returns: Returns a tuple of the vif if found and the use of
-              the vif in the form of a string, 'tenant', 'cleaning'
-              'provisioning', 'rescuing'.
-    :raises: InvalidState exception upon finding a port with a
-             transient state vif on the port.
-    """
-
-    tenant_vif = port.internal_info.get('tenant_vif_port_id')
-    if tenant_vif:
-        return (tenant_vif, 'tenant')
-    clean_vif = port.internal_info.get('cleaning_vif_port_id')
-    if clean_vif:
-        return (clean_vif, 'cleaning')
-    prov_vif = port.internal_info.get('provisioning_vif_port_id')
-    if prov_vif:
-        return (prov_vif, 'provisioning')
-    rescue_vif = port.internal_info.get('rescuing_vif_port_id')
-    if rescue_vif:
-        return (rescue_vif, 'rescuing')
-    inspection_vif = port.internal_info.get('inspection_vif_port_id')
-    if inspection_vif:
-        return (inspection_vif, 'inspecting')
-    return (None, None)
 
 
 def store_agent_certificate(node, agent_verify_ca):

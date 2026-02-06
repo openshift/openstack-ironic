@@ -2657,6 +2657,22 @@ class FastTrackTestCase(db_base.DbTestCase):
             task.node.provision_state = states.SERVICING
             self.assertFalse(conductor_utils.is_fast_track(task))
 
+    def test_is_fast_track_redfish_fw_updates(self, mock_get_power):
+        mock_get_power.return_value = states.POWER_ON
+        with task_manager.acquire(
+                self.context, self.node.uuid, shared=False) as task:
+            task.node.set_driver_internal_info('redfish_fw_updates',
+                                               [{'url': 'http://test'}])
+            self.assertFalse(conductor_utils.is_fast_track(task))
+
+    def test_is_fast_track_firmware_updates(self, mock_get_power):
+        mock_get_power.return_value = states.POWER_ON
+        with task_manager.acquire(
+                self.context, self.node.uuid, shared=False) as task:
+            task.node.set_driver_internal_info('firmware_updates',
+                                               [{'url': 'http://test'}])
+            self.assertFalse(conductor_utils.is_fast_track(task))
+
 
 class GetNodeNextStepsTestCase(db_base.DbTestCase):
     def setUp(self):
@@ -2791,51 +2807,6 @@ class AgentTokenUtilsTestCase(tests_base.TestCase):
         self.assertFalse(conductor_utils.is_agent_token_present(self.node))
         conductor_utils.add_secret_token(self.node)
         self.assertTrue(conductor_utils.is_agent_token_present(self.node))
-
-
-class GetAttachedVifTestCase(db_base.DbTestCase):
-
-    def setUp(self):
-        super(GetAttachedVifTestCase, self).setUp()
-        self.node = obj_utils.create_test_node(self.context,
-                                               driver='fake-hardware')
-        self.port = obj_utils.get_test_port(self.context,
-                                            node_id=self.node.id)
-
-    def test_get_attached_vif_none(self):
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertIsNone(vif)
-        self.assertIsNone(use)
-
-    def test_get_attached_vif_tenant(self):
-        self.port.internal_info = {'tenant_vif_port_id': '1'}
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertEqual('1', vif)
-        self.assertEqual('tenant', use)
-
-    def test_get_attached_vif_provisioning(self):
-        self.port.internal_info = {'provisioning_vif_port_id': '1'}
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertEqual('1', vif)
-        self.assertEqual('provisioning', use)
-
-    def test_get_attached_vif_cleaning(self):
-        self.port.internal_info = {'cleaning_vif_port_id': '1'}
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertEqual('1', vif)
-        self.assertEqual('cleaning', use)
-
-    def test_get_attached_vif_rescuing(self):
-        self.port.internal_info = {'rescuing_vif_port_id': '1'}
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertEqual('1', vif)
-        self.assertEqual('rescuing', use)
-
-    def test_get_attached_vif_inspecting(self):
-        self.port.internal_info = {'inspection_vif_port_id': '1'}
-        vif, use = conductor_utils.get_attached_vif(self.port)
-        self.assertEqual('1', vif)
-        self.assertEqual('inspecting', use)
 
 
 class StoreAgentCertificateTestCase(db_base.DbTestCase):

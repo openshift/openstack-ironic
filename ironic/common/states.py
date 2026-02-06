@@ -237,6 +237,9 @@ SERVICEHOLD = 'service hold'
 SERVICING_STATES = frozenset((SERVICING, SERVICEWAIT,
                               SERVICEFAIL, SERVICEHOLD))
 
+"""All Node states related to inspection."""
+INSPECTION_STATES = frozenset((INSPECTING, INSPECTWAIT, INSPECTFAIL))
+
 
 # NOTE(kaifeng): INSPECTING is allowed to keep backwards compatibility,
 # starting from API 1.39 node update is disallowed in this state.
@@ -267,7 +270,8 @@ to fail state.
 """
 
 _LOOKUP_ALLOWED_STATES = (DEPLOYING, DEPLOYWAIT, CLEANING, CLEANWAIT,
-                          INSPECTING, INSPECTWAIT, RESCUING, RESCUEWAIT)
+                          INSPECTING, INSPECTWAIT, RESCUING, RESCUEWAIT,
+                          SERVICEWAIT)
 LOOKUP_ALLOWED_STATES = frozenset(_LOOKUP_ALLOWED_STATES)
 
 """States when API lookups are normally allowed for nodes."""
