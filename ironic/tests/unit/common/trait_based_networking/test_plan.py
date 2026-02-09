@@ -21,7 +21,6 @@ from ddt import ddt
 from ddt import unpack
 
 
-
 def annotate(name, *args):
     class AnnotatedList(list):
         pass
@@ -299,6 +298,57 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     "fake_net_id")
             ],
         ),
+        annotate(("Only one port attach generated for two actions matching"
+                  "the same port"),
+            tbn_base.NetworkTrait(
+                "CUSTOM_TRAIT",
+                [
+                    tbn_base.TraitAction(
+                        "CUSTOM_TRAIT",
+                        tbn_base.Actions.ATTACH_PORT,
+                        tbn_base.FilterExpression.parse(
+                            "port.physical_network == 'hypernet'"),
+                    ),
+                    tbn_base.TraitAction(
+                        "CUSTOM_TRAIT",
+                        tbn_base.Actions.ATTACH_PORT,
+                        tbn_base.FilterExpression.parse(
+                            "port.vendor == 'clover'"),
+                    )
+                ]
+            ),
+            "fake_node_uuid",
+            [
+                utils.FauxPortLikeObject(
+                    uuid="fake_port_uuid",
+                    vendor="clover",
+                    physical_network="hypernet",
+                )
+            ],
+            [],
+            [tbn_base.Network("fake_net_id", "fake_net_name", [])],
+            [
+                tbn_base.AttachPort(
+                    tbn_base.TraitAction(
+                        "CUSTOM_TRAIT",
+                        tbn_base.Actions.ATTACH_PORT,
+                        tbn_base.FilterExpression.parse(
+                            "port.physical_network == 'hypernet'"),
+                    ),
+                    "fake_node_uuid",
+                    "fake_port_uuid",
+                    "fake_net_id"),
+                tbn_base.NoMatch(
+                    tbn_base.TraitAction(
+                        "CUSTOM_TRAIT",
+                        tbn_base.Actions.ATTACH_PORT,
+                        tbn_base.FilterExpression.parse(
+                            "port.vendor == 'clover'"),
+                    ),
+                    "fake_node_uuid",
+                    "No (port, network) pairs matched rule.")
+            ],
+        ),
     )
     @unpack
     def test_plan_network(self,
@@ -349,6 +399,59 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                 "fake_port_uuid",
                 "fake_net_id"
             )],
+        ),
+        annotate("trait order matters",
+            [
+                tbn_base.NetworkTrait(
+                    "CUSTOM_TRAIT_ORDER_SECOND",
+                    [
+                        tbn_base.TraitAction(
+                            "CUSTOM_TRAIT_ORDER_SECOND",
+                            tbn_base.Actions.ATTACH_PORT,
+                            tbn_base.FilterExpression.parse(
+                                "port.physical_network == 'hypernet'"),
+                        )
+                    ],
+                    order=2,
+                ),
+                tbn_base.NetworkTrait(
+                    "CUSTOM_TRAIT_ORDER_FIRST",
+                    [
+                        tbn_base.TraitAction(
+                            "CUSTOM_TRAIT_ORDER_FIRST",
+                            tbn_base.Actions.ATTACH_PORT,
+                            tbn_base.FilterExpression.parse(
+                                "port.physical_network == 'hypernet'"),
+                        )
+                    ],
+                    order=1,
+                ),
+            ],
+            utils.FauxTask(
+                utils.FauxNode(
+                    instance_info={
+                        'traits':['CUSTOM_TRAIT_ORDER_SECOND',
+                                  'CUSTOM_TRAIT_ORDER_FIRST']}),
+                [utils.FauxPortLikeObject(
+                    uuid="fake_port_uuid",
+                    physical_network="hypernet")],
+                []
+            ),
+            {
+                'id': 'fake_net_id',
+            },
+            [
+                tbn_base.AttachPort(tbn_base.TraitAction(
+                     "CUSTOM_TRAIT_ORDER_FIRST",
+                     tbn_base.Actions.ATTACH_PORT,
+                     tbn_base.FilterExpression.parse(
+                         "port.physical_network == 'hypernet'"),
+                     ),
+                    "fake_node_uuid",
+                    "fake_port_uuid",
+                    "fake_net_id"
+                )
+            ],
         ),
     )
     @unpack
