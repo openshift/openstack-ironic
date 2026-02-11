@@ -188,6 +188,10 @@ root-device = "ironic.drivers.modules.inspector.hooks.root_device:RootDeviceHook
 local-link-connection = "ironic.drivers.modules.inspector.hooks.local_link_connection:LocalLinkConnectionHook"
 parse-lldp = "ironic.drivers.modules.inspector.hooks.parse_lldp:ParseLLDPHook"
 
+# Pluggable WSGI middleware - external packages can register middleware here
+# and enable them via [api] middleware config option
+[project.entry-points."ironic.api.middleware"]
+
 [project.entry-points."ironic.networking.switch_drivers"]
 noop = "ironic.drivers.modules.switch:NoOpSwitchDriver"
 generic-switch = "ironic.drivers.modules.switch.generic_switch:GenericSwitchDriver"

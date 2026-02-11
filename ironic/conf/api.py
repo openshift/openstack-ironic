@@ -109,6 +109,19 @@ opts = [
     cfg.StrOpt('key_file',
                help="Private key file to use when starting "
                     "the server securely."),
+    cfg.ListOpt('middleware',
+                default=[],
+                help=_('Comma-separated list of WSGI middleware to load '
+                       'from the ironic.api.middleware entry point namespace. '
+                       'Middleware are applied in the order specified, '
+                       'wrapping the API application. This allows operators '
+                       'to add custom request processing (validation, '
+                       'logging, '
+                       'rate limiting, etc.) without modifying Ironic code. '
+                       'External packages can register middleware by adding '
+                       'entry points to the ironic.api.middleware namespace. '
+                       'Each middleware must be a callable that accepts a '
+                       'WSGI application and returns a wrapped application.')),
 ]
 
 
