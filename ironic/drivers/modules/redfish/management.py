@@ -184,16 +184,17 @@ def _set_boot_device(task, system, device, persistent=False,
     # Logging callback for retry attempts (closure captures task)
     def _log_post_boot_retry(retry_state):
         LOG.warning('BMC is in POST, unable to modify boot device for '
-                 'node %(node)s. Retrying in %(delay).1f seconds '
-                 '(attempt %(attempt)d/%(total)d)',
-                 {'node': task.node.uuid,
-                  'delay': retry_state.next_action.sleep,
-                  'attempt': retry_state.attempt_number,
-                  'total': CONF.redfish.post_boot_retry_attempts})
+                    'node %(node)s. Retrying in %(delay).1f seconds '
+                    '(attempt %(attempt)d/%(total)d)',
+                    {'node': task.node.uuid,
+                     'delay': retry_state.next_action.sleep,
+                     'attempt': retry_state.attempt_number,
+                     'total': CONF.redfish.post_boot_retry_attempts})
 
     @tenacity.retry(
         retry=tenacity.retry_if_exception(_is_during_post_error),
-        stop=tenacity.stop_after_attempt(CONF.redfish.post_boot_retry_attempts),
+        stop=tenacity.stop_after_attempt(
+            CONF.redfish.post_boot_retry_attempts),
         wait=tenacity.wait_exponential(
             multiplier=1,
             min=CONF.redfish.post_boot_retry_delay,

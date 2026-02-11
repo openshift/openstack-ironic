@@ -398,7 +398,6 @@ class RedfishFirmware(base.FirmwareInterface):
             polling=True
         )
 
-
     def _get_current_bmc_version(self, node):
         """Get current BMC firmware version.
 
@@ -637,7 +636,6 @@ class RedfishFirmware(base.FirmwareInterface):
             self._setup_bios_update_monitoring(node)
         else:
             self._setup_default_update_monitoring(node, fw_upd)
-
 
     def _validate_resources_stability(self, node):
         """Validate that BMC resources are consistently available.
@@ -1114,7 +1112,6 @@ class RedfishFirmware(base.FirmwareInterface):
         # Upgrade lock at the start since we may modify driver_internal_info
         task.upgrade_lock()
         node = task.node
-
 
         try:
             sushy_task = task_monitor.get_task()

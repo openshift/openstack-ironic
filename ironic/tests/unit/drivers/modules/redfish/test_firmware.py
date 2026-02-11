@@ -1006,8 +1006,8 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
 
         # Test each of the three active states
         for task_state in [sushy.TASK_STATE_RUNNING,
-                          sushy.TASK_STATE_STARTING,
-                          sushy.TASK_STATE_PENDING]:
+                           sushy.TASK_STATE_STARTING,
+                           sushy.TASK_STATE_PENDING]:
             log_mock.reset_mock()
 
             tm_mock.return_value.is_processing = False
@@ -1398,6 +1398,7 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
         # Verify BMC monitoring setup was called (internally by _execute)
         set_async_mock.assert_called_once_with(
             self.node, reboot=False, polling=True)
+
     @mock.patch.object(deploy_utils, 'set_async_step_flags', autospec=True)
     @mock.patch.object(redfish_utils, 'get_manager', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
@@ -2487,6 +2488,7 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
             # Mock upgrade_lock to simulate what happens in production:
             # Replace task.node with a fresh copy from DB
             original_upgrade_lock = task.upgrade_lock
+
             def mock_upgrade_lock():
                 original_upgrade_lock()
                 # Simulate production behavior: replace task.node
@@ -2494,8 +2496,8 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                 task.node = objects.Node.get(self.context, task.node.uuid)
 
             with mock.patch.object(task, 'upgrade_lock',
-                                 side_effect=mock_upgrade_lock,
-                                 autospec=True):
+                                   side_effect=mock_upgrade_lock,
+                                   autospec=True):
                 # Call the actual method being tested
                 firmware_interface = redfish_fw.RedfishFirmware()
                 result = firmware_interface._handle_bios_task_starting(
