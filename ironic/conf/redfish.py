@@ -92,9 +92,67 @@ opts = [
                       'failed firmware update tasks')),
     cfg.IntOpt('firmware_update_wait_unresponsive_bmc',
                min=0,
-               default=300,
+               default=0,
                help=_('Number of seconds to wait before proceeding with the '
                       'reboot to finish the BMC firmware update step')),
+    cfg.IntOpt('firmware_update_required_successes',
+               min=0,
+               default=3,
+               help=_('Number of successful responses required to '
+                      'consider post-upgrade BMC validation a success. '
+                      'Set to 0 to disable post-upgrade validation '
+                      'entirely.')),
+    cfg.IntOpt('firmware_update_validation_interval',
+               min=0,
+               default=30,
+               help=_('Timeout (in seconds) to wait between validation '
+                      'attempts. Set to 0 for rapid succession retries '
+                      'with no delay.')),
+    cfg.IntOpt('firmware_update_resource_validation_timeout',
+               min=0,
+               default=480,
+               help=_('Timeout (in seconds) to wait for BMC resources '
+                      '(System, Manager, NetworkAdapters) to become stable '
+                      'and consistently available after firmware update. '
+                      'Set to 0 to disable post-upgrade validation '
+                      'entirely.')),
+    cfg.IntOpt('firmware_update_bmc_timeout',
+               min=0,
+               default=300,
+               help=_('Timeout (in seconds) for BMC firmware updates. '
+                      'BMC firmware updates may need extended time to handle '
+                      'BMC transitional states during the firmware update '
+                      'process.')),
+    cfg.IntOpt('firmware_update_reboot_delay',
+               min=0,
+               default=300,
+               help=_('Default wait time (in seconds) for component-specific '
+                      'firmware update operations. Used for: BIOS firmware '
+                      'update wait before reboot, BMC firmware version check '
+                      'timeout, and NIC firmware task completion timeout.')),
+    cfg.IntOpt('firmware_update_bmc_version_check_interval',
+               min=0,
+               default=30,
+               help=_('Interval (in seconds) for checking BMC firmware '
+                      'version after BMC firmware update. Used to verify '
+                      'if BMC firmware has been successfully applied.')),
+    cfg.IntOpt('firmware_update_nic_starting_wait',
+               min=0,
+               default=30,
+               help=_('Time (in seconds) to wait for a NIC firmware update '
+                      'task to progress beyond the STARTING state before '
+                      'triggering a reboot. Some NICs need a reboot to '
+                      'start applying firmware, while others can begin '
+                      'immediately. This timeout helps determine which '
+                      'behavior the hardware exhibits.')),
+    cfg.IntOpt('firmware_update_overall_timeout',
+               min=0,
+               default=7200,
+               help=_('Maximum time (in seconds) allowed for the entire '
+                      'firmware update operation to complete. This provides '
+                      'a safety net for firmware updates that get stuck. '
+                      'Set to 0 to disable this timeout (not recommended). '
+                      'Default is 7200 seconds (2 hours).')),
     cfg.StrOpt('firmware_source',
                choices=[('http', _('If firmware source URL is also HTTP, then '
                                    'serve from original location, otherwise '
@@ -155,6 +213,21 @@ opts = [
                       '$default_inspection_hooks. Hooks can be added before '
                       'or after the defaults like this: '
                       '"prehook,$default_hooks,posthook".')),
+    cfg.IntOpt('post_boot_retry_attempts',
+               min=1,
+               default=6,
+               help=_('Maximum number of retry attempts when BMC rejects '
+                      'boot device changes during POST (Power-On Self-Test). '
+                      'Some BMCs (e.g. HPE iLO) reject boot device '
+                      'modifications while the system is in POST after a '
+                      'firmware update or reboot.')),
+    cfg.IntOpt('post_boot_retry_delay',
+               min=1,
+               default=5,
+               help=_('Minimum delay in seconds between retry attempts '
+                      'for POST-related boot device errors. Exponential '
+                      'backoff is applied, starting from this value up to '
+                      '6x this value.')),
 ]
 
 
