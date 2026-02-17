@@ -184,4 +184,7 @@ def setup(app: Sphinx):
     app.connect('builder-inited', builder_inited)
     app.add_config_value('redfish_interop_source', None, 'env', [str])
     app.add_config_value('redfish_interop_output_dir', None, 'env', [str])
-    return {'version': __version__}
+    return {
+        'version': __version__,
+        'parallel_read_safe': True,
+    }
