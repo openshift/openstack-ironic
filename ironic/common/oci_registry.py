@@ -206,13 +206,15 @@ class RegistrySessionHelper(object):
 
         The expected file format is along the lines of:
 
-        {
-          "auths": {
-            "domain.name": {
-              "auth": "pre-shared-secret-value"
+        .. code-block:: json
+
+            {
+              "auths": {
+                "domain.name": {
+                  "auth": "pre-shared-secret-value"
+                }
+              }
             }
-          }
-        }
 
         :param fqdn: A fully qualified domain name for interacting
                      with the remote image registry.

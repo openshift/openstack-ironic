@@ -1349,6 +1349,7 @@ class IronicNetworking(base.NetworkInterface):
         (`network_data.json`) format.
 
         For the ironic-networking interface, this generates:
+
         - Physical links (type: "phy") for each port with a MAC address
         - VLAN interfaces (type: "vlan") for ports with allowed_vlans
           configured in their switchport settings
