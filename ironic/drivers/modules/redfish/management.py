@@ -96,7 +96,7 @@ BOOT_DEVICE_PERSISTENT_MAP_REV = {v: k for k, v in
 VENDORS_REQUIRING_FULL_BOOT_REQUEST = [
     "american megatrends international",
     "ami",
-    "asrockrack"
+    "asrockrack",
     "redfish_compatible"
 ]
 
