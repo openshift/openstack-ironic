@@ -1713,6 +1713,7 @@ function configure_neutron_l3_lower_v6_ra {
 
 function configure_neutron_dhcp_enable_addr6_list {
     if is_service_enabled q-dhcp neutron-dhcp; then
+        async_wait init_neutron
         iniset $Q_DHCP_CONF_FILE DEFAULT dnsmasq_enable_addr6_list true
         restart_service devstack@q-dhcp.service || true
         restart_service devstack@neutron-dhcp.service || true
