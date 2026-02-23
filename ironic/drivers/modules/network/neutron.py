@@ -296,3 +296,35 @@ class NeutronNetwork(common.NeutronVIFPortIDMixin,
         return self._remove_network(
             task, self.get_servicing_network_uuid(task),
             common.NetType.SERVICING)
+
+    @base.service_step(priority=0, requires_ramdisk=False)
+    def reattach_networking(self, task):
+        """Reattach tenant networking without rebooting the node.
+
+        This service step unbinds and rebinds the tenant network ports
+        attached to the node without requiring a reboot or IPA deployment.
+        This is useful for advanced networking scenarios such as:
+
+        - Reconfiguring VXLAN network topology
+        - Updating network binding after infrastructure changes
+        - Recovering from network binding failures
+        - Migrating network segments or physical networks
+
+        The VIF attachments are preserved (not removed), only the Neutron
+        port bindings are cleared and re-established. This allows network
+        switches to reconfigure the ports without instance downtime.
+
+        :param task: A TaskManager instance.
+        :raises: NetworkError if reattaching fails
+        """
+        LOG.info('Reattaching tenant networking for node %s', task.node.uuid)
+
+        # Unbind current tenant networks (VIF IDs remain in
+        # port.internal_info)
+        self.unconfigure_tenant_networks(task)
+
+        # Reattach tenant networks using existing VIF IDs
+        self.configure_tenant_networks(task)
+
+        LOG.info('Successfully reattached tenant networking for node %s',
+                 task.node.uuid)

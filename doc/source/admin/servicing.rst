@@ -207,6 +207,48 @@ raid.apply_configuration
 This is the standardized RAID passthrough interface for the agent, and can
 be leveraged like other RAID interfaces.
 
+Neutron Network Interface
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+network.reattach_networking
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This service step reattaches tenant networking on an active node without
+requiring a reboot or IPA deployment. This is useful for advanced networking
+scenarios such as VXLAN topology changes, network infrastructure migrations,
+or recovering from network binding failures.
+
+**Key characteristics:**
+
+- Does **not** require IPA ramdisk (``requires_ramdisk=False``)
+- Does **not** reboot the instance
+- Preserves VIF attachments while refreshing Neutron port bindings
+- Supports Smart NIC ports with proper agent synchronization
+- Typically completes in seconds
+
+**When to use:**
+
+- VXLAN network topology reconfiguration
+- Physical network segment migrations
+- Network binding state recovery
+- Switch reconfiguration without downtime
+
+**Usage example:**
+
+.. code-block:: console
+
+  $ openstack baremetal node service <node-uuid> \
+      --service-steps '[{"interface": "network", "step": "reattach_networking"}]'
+
+For detailed troubleshooting guidance and additional information, see
+:ref:`troubleshooting` section "Reattaching networking on active instances".
+
+**Requirements:**
+
+- Node must be in ``active`` state
+- Node must use ``network_interface=neutron``
+- Node's ports must have existing tenant VIF attachments
+- No arguments required
 
 Available steps in Ironic-Python-Agent
 --------------------------------------

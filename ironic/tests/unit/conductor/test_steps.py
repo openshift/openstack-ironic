@@ -1496,3 +1496,44 @@ class NodeServiceStepsTestCase(db_base.DbTestCase):
             self.assertIsNone(
                 self.node.driver_internal_info['service_step_index'])
             mock_steps.assert_called_once_with(task, [], disable_ramdisk=False)
+
+    def test_servicing_interface_priority_contains_network(self):
+        # Verify that network interface is in SERVICING_INTERFACE_PRIORITY
+        self.assertIn('network',
+                      conductor_steps.SERVICING_INTERFACE_PRIORITY)
+        # Verify the priority value is 8 as configured
+        self.assertEqual(8,
+                         conductor_steps.SERVICING_INTERFACE_PRIORITY['network'])
+
+    @mock.patch('ironic.drivers.modules.fake.FakeDeploy.get_service_steps',
+                autospec=True)
+    @mock.patch('ironic.drivers.modules.network.neutron.NeutronNetwork.'
+                'get_service_steps', autospec=True)
+    def test__get_service_steps_with_network_interface(
+            self, mock_network_steps, mock_deploy_steps):
+        # Test that service steps can be retrieved from network interface
+        # First create a node with neutron network interface
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            uuid='12345678-1234-1234-1234-123456789012',
+            network_interface='neutron')
+
+        network_step = {
+            'step': 'reattach_networking', 'priority': 0,
+            'interface': 'network', 'abortable': False,
+            'argsinfo': None, 'requires_ramdisk': False
+        }
+        mock_network_steps.return_value = [network_step]
+        mock_deploy_steps.return_value = [self.deploy_start]
+
+        with task_manager.acquire(
+                self.context, node.uuid, shared=False) as task:
+            steps = conductor_steps._get_service_steps(task, enabled=False)
+
+            # Verify the network step was retrieved
+            network_steps_found = [s for s in steps
+                                   if s['interface'] == 'network']
+            self.assertEqual(1, len(network_steps_found))
+            self.assertEqual('reattach_networking',
+                             network_steps_found[0]['step'])
+            mock_network_steps.assert_called_once_with(mock.ANY, task)
