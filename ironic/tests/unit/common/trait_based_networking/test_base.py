@@ -115,13 +115,13 @@ class TraitBasedNetworkingBaseTestCase(base.TestCase):
             tbn_test_utils.FauxPortLikeObject()
         )
 
-        net = tbn.Network("fake_id", "test2", [])
+        net = tbn.Network("fake_id", "test2", frozenset())
         self.assertFalse(exp.eval(port, net))
 
-        net = tbn.Network("fake_id", "test", [])
+        net = tbn.Network("fake_id", "test", frozenset())
         self.assertTrue(exp.eval(port, net))
 
-        net = tbn.Network("fake_id", "abcd", [])
+        net = tbn.Network("fake_id", "abcd", frozenset())
         self.assertTrue(exp.eval(port, net))
 
     def test_filter_comparator_eval_less_than(self):
@@ -132,13 +132,13 @@ class TraitBasedNetworkingBaseTestCase(base.TestCase):
             tbn_test_utils.FauxPortLikeObject()
         )
 
-        net = tbn.Network("fake_id", "test2", [])
+        net = tbn.Network("fake_id", "test2", frozenset())
         self.assertFalse(exp.eval(port, net))
 
-        net = tbn.Network("fake_id", "test", [])
+        net = tbn.Network("fake_id", "test", frozenset())
         self.assertFalse(exp.eval(port, net))
 
-        net = tbn.Network("fake_id", "abcd", [])
+        net = tbn.Network("fake_id", "abcd", frozenset())
         self.assertTrue(exp.eval(port, net))
 
     def test_filter_comparator_eval_prefix_match(self):
