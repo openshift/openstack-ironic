@@ -5,15 +5,16 @@
 # Andi Chandler <andi@gowling.com>, 2022. #zanata
 # Andi Chandler <andi@gowling.com>, 2023. #zanata
 # Andi Chandler <andi@gowling.com>, 2024. #zanata
+# Andi Chandler <andi@gowling.com>, 2026. #zanata
 msgid ""
 msgstr ""
 "Project-Id-Version: Ironic Release Notes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-07-14 18:18+0000\n"
+"POT-Creation-Date: 2026-02-23 17:12+0000\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"PO-Revision-Date: 2024-12-17 09:59+0000\n"
+"PO-Revision-Date: 2026-02-21 04:55+0000\n"
 "Last-Translator: Andi Chandler <andi@gowling.com>\n"
 "Language-Team: English (United Kingdom)\n"
 "Language: en_GB\n"
@@ -270,6 +271,9 @@ msgstr "18.2.2"
 msgid "18.3.0"
 msgstr "18.3.0"
 
+msgid "18.3.0-21"
+msgstr "18.3.0-21"
+
 msgid "20.1.0"
 msgstr "20.1.0"
 
@@ -282,8 +286,17 @@ msgstr "20.1.2"
 msgid "20.1.3"
 msgstr "20.1.3"
 
+msgid "20.1.3-14"
+msgstr "20.1.3-14"
+
 msgid "2023.1-eom"
 msgstr "2023.1-eom"
+
+msgid "2023.1-eom-5"
+msgstr "2023.1-eom-5"
+
+msgid "2023.2-eol"
+msgstr "2023.2-eol"
 
 msgid "21.1.0"
 msgstr "21.1.0"
@@ -293,6 +306,9 @@ msgstr "21.1.1"
 
 msgid "21.1.2"
 msgstr "21.1.2"
+
+msgid "21.1.2-10"
+msgstr "21.1.2-10"
 
 msgid "21.4.0"
 msgstr "21.4.0"
@@ -318,6 +334,9 @@ msgstr "23.0.2"
 msgid "23.0.3"
 msgstr "23.0.3"
 
+msgid "23.0.4"
+msgstr "23.0.4"
+
 msgid "24.1.0"
 msgstr "24.1.0"
 
@@ -327,11 +346,11 @@ msgstr "24.1.2"
 msgid "24.1.3"
 msgstr "24.1.3"
 
-msgid "25.0.0"
-msgstr "25.0.0"
+msgid "24.1.4"
+msgstr "24.1.4"
 
-msgid "26.0.0"
-msgstr "26.0.0"
+msgid "24.1.5"
+msgstr "24.1.5"
 
 msgid "26.1.0"
 msgstr "26.1.0"
@@ -339,8 +358,59 @@ msgstr "26.1.0"
 msgid "26.1.1"
 msgstr "26.1.1"
 
+msgid "26.1.2"
+msgstr "26.1.2"
+
+msgid "26.1.3"
+msgstr "26.1.3"
+
+msgid "26.1.4"
+msgstr "26.1.4"
+
+msgid "26.1.5"
+msgstr "26.1.5"
+
 msgid "27.0.0"
 msgstr "27.0.0"
+
+msgid "28.0.0"
+msgstr "28.0.0"
+
+msgid "29.0.0"
+msgstr "29.0.0"
+
+msgid "29.0.1"
+msgstr "29.0.1"
+
+msgid "29.0.2"
+msgstr "29.0.2"
+
+msgid "29.0.3"
+msgstr "29.0.3"
+
+msgid "29.0.4"
+msgstr "29.0.4"
+
+msgid "29.0.4-13"
+msgstr "29.0.4-13"
+
+msgid "30.0.0"
+msgstr "30.0.0"
+
+msgid "31.0.0"
+msgstr "31.0.0"
+
+msgid "32.0.0"
+msgstr "32.0.0"
+
+msgid "32.0.0-42"
+msgstr "32.0.0-42"
+
+msgid "33.0.0"
+msgstr "33.0.0"
+
+msgid "34.0.0"
+msgstr "34.0.0"
 
 msgid "4.0.0   First semver release"
 msgstr "4.0.0   First semver release"
@@ -535,13 +605,6 @@ msgstr ""
 "specification <http://specs.openstack.org/openstack/ironic-specs/specs/"
 "approved/classic-drivers-future.html#automatic-migration>`_ for an "
 "explanation on how to do it."
-
-msgid ""
-"A conductor is now considered alive if ``online`` is true and there is a "
-"recent enough heartbeat."
-msgstr ""
-"A conductor is now considered alive if ``online`` is true and there is a "
-"recent enough heartbeat."
 
 msgid ""
 "A critical security vulnerability (CVE-2016-4985) was fixed in this release. "
@@ -862,15 +925,6 @@ msgstr ""
 "net/ironic/+bug/1536828 for details."
 
 msgid ""
-"API version 1.91 removes special treatment given to URLs ending in \"."
-"json\". Operators desiring the previous behavior can request API version "
-"1.90 or earlier."
-msgstr ""
-"API version 1.91 removes special treatment given to URLs ending in \"."
-"json\". Operators desiring the previous behaviour can request API version "
-"1.90 or earlier."
-
-msgid ""
 "Ability to create an allocation has been restricted by a new policy rule "
 "``baremetal::allocation::create_pre_rbac`` which prevents creation of "
 "allocations by any project administrator when operating with the new Role "
@@ -1138,6 +1192,24 @@ msgstr ""
 "the configuration option ``[database]db_max_retries``."
 
 msgid ""
+"Adds Firmware Interface support to ironic, we would like to receive feedback "
+"since this is a new feature we introduced and we as a developer community "
+"have limited hardware access, reach out to us in case of any unexpected "
+"behavior."
+msgstr ""
+"Adds Firmware Interface support to Ironic. We would like to receive feedback "
+"since this is a new feature we introduced, and we, as a developer community, "
+"have limited hardware access. Reach out to us in case of any unexpected "
+"behaviour."
+
+msgid ""
+"Adds NVIDIA A10/A40/L40S/L20 to known accelerators that can be reported when "
+"present in bare metals."
+msgstr ""
+"Adds NVIDIA A10/A40/L40S/L20 to known accelerators that can be reported when "
+"present in bare metals."
+
+msgid ""
 "Adds REST API endpoints for indicator management. Three new endpoints, for "
 "listing, reading and setting the indicators, reside under the ``/v1/nodes/"
 "<node_ident>/management/indicators`` location."
@@ -1145,6 +1217,21 @@ msgstr ""
 "Adds REST API endpoints for indicator management. Three new endpoints, for "
 "listing, reading and setting the indicators, reside under the ``/v1/nodes/"
 "<node_ident>/management/indicators`` location."
+
+msgid ""
+"Adds Redfish LLDP data collection support to the Redfish inspection "
+"interface. This enables collecting Link Layer Discovery Protocol (LLDP) data "
+"from Redfish-compliant hardware during the inspection process. The collected "
+"data includes chassis ID, port ID, system name, system description, system "
+"capabilities, and management addresses, formatted as TLVs compatible with "
+"Ironic Python Agent inspection hooks and rules."
+msgstr ""
+"Adds Redfish LLDP data collection support to the Redfish inspection "
+"interface. This enables collecting Link Layer Discovery Protocol (LLDP) data "
+"from Redfish-compliant hardware during the inspection process. The collected "
+"data includes chassis ID, port ID, system name, system description, system "
+"capabilities, and management addresses, formatted as TLVs compatible with "
+"Ironic Python Agent inspection hooks and rules."
 
 msgid ""
 "Adds SNMP request timeout and retries settings for the SNMP UDP transport. "
@@ -1187,6 +1274,29 @@ msgstr ""
 "OpenStack requests through all OpenStack services that support it. For more "
 "information, see https://docs.openstack.org/ironic/latest/contributor/"
 "osprofiler-support.html."
+
+msgid ""
+"Adds ``CONF.conductor.file_url_allowed_paths``, an allowlist configuration "
+"defaulting to ``/var/lib/ironic``, ``/shared/html``, ``/opt/cache/files``, "
+"``/vagrant``, and  ``/templates``, permits operators to further restrict "
+"where the conductor will fetch images for when provided a file:// URL. This "
+"default value was chosen based on known usage by projects downstream of "
+"Ironic, including Metal3, Bifrost, and OpenShift. These defaults may change "
+"to be more restrictive at a later date. Operators using file:// URLs are "
+"encouraged to explicitly set this value even if the current default is "
+"sufficient. Operators wishing to fully disable the ability to deploy with a "
+"file:// URL should set this configuration to \"\" (empty)."
+msgstr ""
+"Adds ``CONF.conductor.file_url_allowed_paths``, an allowlist configuration "
+"defaulting to ``/var/lib/ironic``, ``/shared/html``, ``/opt/cache/files``, "
+"``/vagrant``, and  ``/templates``, permits operators to further restrict "
+"where the conductor will fetch images for when provided a file:// URL. This "
+"default value was chosen based on known usage by projects downstream of "
+"Ironic, including Metal3, Bifrost, and OpenShift. These defaults may change "
+"to be more restrictive at a later date. Operators using file:// URLs are "
+"encouraged to explicitly set this value even if the current default is "
+"sufficient. Operators wishing to fully disable the ability to deploy with a "
+"file:// URL should set this configuration to \"\" (empty)."
 
 msgid ""
 "Adds ``[conductor]/check_rescue_state_interval`` and ``[conductor]/"
