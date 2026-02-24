@@ -21,6 +21,7 @@ from ironic.conf import anaconda
 from ironic.conf import ansible
 from ironic.conf import api
 from ironic.conf import audit
+from ironic.conf import cifs
 from ironic.conf import cinder
 from ironic.conf import conductor
 from ironic.conf import console
@@ -46,6 +47,7 @@ from ironic.conf import mdns
 from ironic.conf import metrics
 from ironic.conf import molds
 from ironic.conf import neutron
+from ironic.conf import nfs
 from ironic.conf import nova
 from ironic.conf import oci
 from ironic.conf import pxe
@@ -64,6 +66,7 @@ anaconda.register_opts(CONF)
 ansible.register_opts(CONF)
 api.register_opts(CONF)
 audit.register_opts(CONF)
+cifs.register_opts(CONF)
 cinder.register_opts(CONF)
 conductor.register_opts(CONF)
 console.register_opts(CONF)
@@ -92,6 +95,7 @@ mdns.register_opts(CONF)
 metrics.register_opts(CONF)
 molds.register_opts(CONF)
 neutron.register_opts(CONF)
+nfs.register_opts(CONF)
 nova.register_opts(CONF)
 oci.register_opts(CONF)
 pxe.register_opts(CONF)

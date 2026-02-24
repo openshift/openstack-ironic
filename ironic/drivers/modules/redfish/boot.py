@@ -20,6 +20,7 @@ import tenacity
 from ironic.common import boot_devices
 from ironic.common import exception
 from ironic.common.i18n import _
+from ironic.common import image_publisher
 from ironic.common import states
 from ironic.common import utils as common_utils
 from ironic.conductor import configdrive_utils
@@ -33,6 +34,11 @@ from ironic.drivers.modules.redfish import utils as redfish_utils
 from ironic.drivers import utils as driver_utils
 
 LOG = log.getLogger(__name__)
+
+# Transport protocol constants (matching Redfish specification values)
+TRANSPORT_HTTP = 'HTTP'
+TRANSPORT_NFS = 'NFS'
+TRANSPORT_CIFS = 'CIFS'
 
 REQUIRED_PROPERTIES = {
     'deploy_kernel': _("URL or Glance UUID of the deployment kernel. "
@@ -59,7 +65,13 @@ OPTIONAL_PROPERTIES = {
                            "be served outside of the provisioning network. "
                            "If set it will have priority over the following "
                            "configs: CONF.deploy.external_http_url and "
-                           "CONF.deploy.http_url. Defaults to None.")
+                           "CONF.deploy.http_url. Defaults to None."),
+    'vmedia_transport_protocol': _("Override transport protocol "
+                                   "selection. Valid values: 'HTTP', "
+                                   "'NFS' (NFSv3), 'CIFS'. If not set, "
+                                   "HTTP is used by default. NFS does not "
+                                   "send credentials; CIFS credentials are "
+                                   "configured via [cifs] options.")
 }
 
 RESCUE_PROPERTIES = {
@@ -252,7 +264,8 @@ def _get_vmedia(task, managers):
     raise exception.InvalidParameterValue(exc_msg)
 
 
-def _insert_vmedia(task, managers, boot_url, boot_device):
+def _insert_vmedia(task, managers, boot_url, boot_device,
+                   username=None, password=None):
     """Insert bootable ISO image into virtual CD or DVD
 
     :param task: A task from TaskManager.
@@ -260,6 +273,8 @@ def _insert_vmedia(task, managers, boot_url, boot_device):
     :param boot_url: URL to a bootable ISO image
     :param boot_device: sushy boot device e.g. `VIRTUAL_MEDIA_CD`,
         `VIRTUAL_MEDIA_DVD` or `VIRTUAL_MEDIA_FLOPPY`
+    :param username: Optional username for image access authentication.
+    :param password: Optional password for image access authentication.
     :raises: InvalidParameterValue, if no suitable virtual CD or DVD is
         found on the node.
     """
@@ -267,13 +282,17 @@ def _insert_vmedia(task, managers, boot_url, boot_device):
     system = redfish_utils.get_system(task.node)
     if _has_vmedia_via_systems(system):
         inserted = _insert_vmedia_in_resource(task, system, boot_url,
-                                              boot_device, err_msgs)
+                                              boot_device, err_msgs,
+                                              username=username,
+                                              password=password)
         if inserted:
             return
     else:
         for manager in managers:
             inserted = _insert_vmedia_in_resource(task, manager, boot_url,
-                                                  boot_device, err_msgs)
+                                                  boot_device, err_msgs,
+                                                  username=username,
+                                                  password=password)
             if inserted:
                 return
 
@@ -297,7 +316,7 @@ def _insert_vmedia(task, managers, boot_url, boot_device):
                 wait=tenacity.wait_fixed(3),
                 reraise=True)
 def _insert_vmedia_in_resource(task, resource, boot_url, boot_device,
-                               err_msgs):
+                               err_msgs, username=None, password=None):
     """Insert virtual media from a given redfish resource (System/Manager)
 
     :param task: A task from TaskManager.
@@ -306,6 +325,8 @@ def _insert_vmedia_in_resource(task, resource, boot_url, boot_device,
     :param boot_device: sushy boot device e.g. `VIRTUAL_MEDIA_CD`,
         `VIRTUAL_MEDIA_DVD` or `VIRTUAL_MEDIA_FLOPPY`
     :param err_msgs: A list that will contain all errors found
+    :param username: Optional username for image access authentication.
+    :param password: Optional password for image access authentication.
     :raises: InvalidParameterValue, if no suitable virtual CD or DVD is
         found on the node.
     """
@@ -364,8 +385,12 @@ def _insert_vmedia_in_resource(task, resource, boot_url, boot_device,
             continue
 
         try:
-            v_media.insert_media(boot_url, inserted=True,
-                                 write_protected=True)
+            kwargs = dict(inserted=True, write_protected=True)
+            if username:
+                kwargs['username'] = username
+            if password:
+                kwargs['password'] = password
+            v_media.insert_media(boot_url, **kwargs)
         # NOTE(janders): On Cisco UCSB and UCSX blades there are several
         # vMedia devices. Some of those are only meant for internal use
         # by CIMC vKVM - attempts to InsertMedia into those will result
@@ -595,6 +620,147 @@ def _parse_deploy_info(node):
     deploy_info.update(_parse_instance_info(node))
 
     return deploy_info
+
+
+def _detect_supported_transport_protocols(task, managers, boot_device):
+    """Detect supported transport protocols from VirtualMedia resources.
+
+    Queries Redfish VirtualMedia resources to determine what transport
+    protocols the BMC supports.
+
+    .. note::
+       This function attempts to predict which virtual media device will
+       be used by matching boot_device type (including CD/DVD fallback),
+       which mirrors the logic in _insert_vmedia_in_resource. However,
+       _insert_vmedia_in_resource has additional complexity (retries,
+       acceptable_id filtering) that this function does not replicate.
+       In practice, the risk of mismatch is low because both functions
+       filter on the same device types.
+
+    :param task: A task from TaskManager.
+    :param managers: A list of System managers.
+    :param boot_device: sushy boot device
+    :returns: List of supported protocol strings.
+    """
+    supported_protocols = set()
+    system = redfish_utils.get_system(task.node)
+    resource = None
+
+    if _has_vmedia_via_systems(system):
+        resource = system
+    else:
+        for manager in managers:
+            if _has_vmedia_via_manager(manager):
+                resource = manager
+                break
+
+    if not resource:
+        LOG.debug("No virtual media resource found for node %s, "
+                  "defaulting to HTTP", task.node.uuid)
+        return ['HTTP']
+
+    try:
+        for v_media in resource.virtual_media.get_members():
+            # Skip devices that don't match the requested boot_device,
+            # unless a CD request can be satisfied by a DVD.
+            media_types = getattr(v_media, 'media_types', [])
+            if (boot_device not in media_types
+                and not (boot_device == sushy.VIRTUAL_MEDIA_CD
+                         and sushy.VIRTUAL_MEDIA_DVD in media_types)):
+                continue
+
+            protocols = None
+            if hasattr(v_media, 'transfer_protocol_type'):
+                protocols = getattr(v_media, 'transfer_protocol_type', None)
+                if isinstance(protocols, list):
+                    supported_protocols.update(protocols)
+                elif protocols:
+                    supported_protocols.add(protocols)
+                continue
+
+            raw_data = getattr(v_media, 'raw', None)
+            if isinstance(raw_data, dict):
+                actions = raw_data.get('Actions', {})
+                insert_media = actions.get('#VirtualMedia.InsertMedia', {})
+                transfer_protocols = insert_media.get(
+                    'TransferProtocolType@Redfish.AllowableValues', [])
+                if transfer_protocols:
+                    supported_protocols.update(transfer_protocols)
+
+                if 'TransferProtocolType' in raw_data:
+                    protocols = raw_data['TransferProtocolType']
+                    if isinstance(protocols, list):
+                        supported_protocols.update(protocols)
+                    elif protocols:
+                        supported_protocols.add(protocols)
+    except (sushy.exceptions.MissingAttributeError,
+            sushy.exceptions.InvalidAttributeError) as e:
+        LOG.debug("Could not detect transport protocols from VirtualMedia "
+                  "for node %(node)s: %(error)s. Defaulting to HTTP.",
+                  {'node': task.node.uuid, 'error': e})
+    except (AttributeError, KeyError, TypeError) as e:
+        LOG.warning("Unexpected error detecting transport protocols from "
+                    "VirtualMedia for node %(node)s: %(error)s. "
+                    "Defaulting to HTTP.",
+                    {'node': task.node.uuid, 'error': e},
+                    exc_info=True)
+
+    normalized = {p.upper() if isinstance(p, str) else str(p).upper()
+                  for p in supported_protocols}
+
+    # Always include HTTP as a supported protocol fallback.
+    normalized.add(TRANSPORT_HTTP)
+
+    return sorted(list(normalized))
+
+
+def _select_transport_protocol(task, supported_protocols):
+    """Select the transport protocol for virtual media.
+
+    Returns the explicitly configured protocol from driver_info, or
+    defaults to HTTP. NFS and CIFS are only used when explicitly set
+    via driver_info[vmedia_transport_protocol].
+
+    :param task: A task from TaskManager.
+    :param supported_protocols: List of protocols supported by the BMC.
+    :returns: Selected protocol string ('HTTP', 'NFS', or 'CIFS').
+    :raises: InvalidParameterValue if driver_info override is not
+        supported by the BMC or required configuration is missing.
+    """
+    node = task.node
+    supported_upper = [p.upper() for p in supported_protocols]
+
+    override = node.driver_info.get('vmedia_transport_protocol')
+    if override:
+        override_upper = override.upper()
+        if override_upper not in supported_upper:
+            raise exception.InvalidParameterValue(
+                _("Node %(node)s requested transport protocol %(proto)s "
+                  "via driver_info, but BMC only supports %(supported)s.")
+                % {'node': node.uuid, 'proto': override_upper,
+                   'supported': supported_upper})
+
+        # Validate that required configuration exists for the protocol
+        if override_upper == TRANSPORT_NFS:
+            if not CONF.nfs.base_url or not CONF.nfs.share_path:
+                raise exception.InvalidParameterValue(
+                    _("NFS transport protocol requested for node %(node)s "
+                      "but [nfs]base_url and [nfs]share_path are not both "
+                      "configured.") % {'node': node.uuid})
+        elif override_upper in (TRANSPORT_CIFS, 'SMB'):
+            if not CONF.cifs.base_url or not CONF.cifs.share_path:
+                raise exception.InvalidParameterValue(
+                    _("CIFS transport protocol requested for node %(node)s "
+                      "but [cifs]base_url and [cifs]share_path are not both "
+                      "configured.") % {'node': node.uuid})
+
+        LOG.debug("Using driver_info transport protocol %s for node %s",
+                  override_upper, node.uuid)
+        return override_upper
+
+    LOG.debug("Using HTTP transport protocol (default) for node %s",
+              node.uuid)
+    return TRANSPORT_HTTP
 
 
 class RedfishVirtualMediaBoot(base.BootInterface):
@@ -838,11 +1004,28 @@ class RedfishVirtualMediaBoot(base.BootInterface):
 
         mode = deploy_utils.rescue_or_deploy_mode(node)
 
+        supported_protocols = _detect_supported_transport_protocols(
+            task, managers, sushy.VIRTUAL_MEDIA_CD)
+        selected_protocol = _select_transport_protocol(
+            task, supported_protocols)
+
+        common_utils.set_node_nested_field(
+            task.node, 'driver_internal_info',
+            'vmedia_transport_protocol', selected_protocol)
+        task.node.save()
+
         iso_ref = image_utils.prepare_deploy_iso(task, ramdisk_params,
                                                  mode, d_info)
 
+        username = None
+        password = None
+        if selected_protocol.upper() in ('CIFS', 'SMB'):
+            cifs_pub = image_publisher.CIFSPublisher()
+            username, password = cifs_pub.get_credentials()
+
         _eject_vmedia(task, managers, sushy.VIRTUAL_MEDIA_CD)
-        _insert_vmedia(task, managers, iso_ref, sushy.VIRTUAL_MEDIA_CD)
+        _insert_vmedia(task, managers, iso_ref, sushy.VIRTUAL_MEDIA_CD,
+                       username=username, password=password)
 
         del managers
 
@@ -926,10 +1109,28 @@ class RedfishVirtualMediaBoot(base.BootInterface):
 
         managers = redfish_utils.get_system(task.node).managers
 
+        supported_protocols = _detect_supported_transport_protocols(
+            task, managers, sushy.VIRTUAL_MEDIA_CD)
+        selected_protocol = _select_transport_protocol(
+            task, supported_protocols)
+
+        common_utils.set_node_nested_field(
+            task.node, 'driver_internal_info',
+            'vmedia_transport_protocol', selected_protocol)
+        task.node.save()
+
         deploy_info = _parse_deploy_info(node)
         iso_ref = image_utils.prepare_boot_iso(task, deploy_info, **params)
+
+        username = None
+        password = None
+        if selected_protocol.upper() in ('CIFS', 'SMB'):
+            cifs_pub = image_publisher.CIFSPublisher()
+            username, password = cifs_pub.get_credentials()
+
         _eject_vmedia(task, managers, sushy.VIRTUAL_MEDIA_CD)
-        _insert_vmedia(task, managers, iso_ref, sushy.VIRTUAL_MEDIA_CD)
+        _insert_vmedia(task, managers, iso_ref, sushy.VIRTUAL_MEDIA_CD,
+                       username=username, password=password)
 
         if boot_option == 'ramdisk':
             self._attach_configdrive(task, managers)

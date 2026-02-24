@@ -1,0 +1,17 @@
+---
+features:
+  - |
+    Adds support for NFS and CIFS/SMB transport protocols for Redfish VirtualMedia
+    boot with automatic protocol detection from BMC capabilities. The driver now
+    automatically detects supported transport protocols (HTTP, NFS, CIFS) from the
+    BMC's VirtualMedia capabilities and selects the best option based on BMC support
+    and configuration. Configure NFS or CIFS shares using
+    ``[nfs]base_url``/``share_path`` or ``[cifs]base_url``/
+    ``share_path``. Protocol selection can be overridden per-node using
+    ``driver_info[vmedia_transport_protocol]``.
+
+    .. note::
+       Ironic does not run or manage any NFS/CIFS services. Operators are
+       responsible for setting up the file share and ensuring it is reachable
+       from the BMC. Ironic copies boot images to the configured share path
+       and provides the URL to the BMC.

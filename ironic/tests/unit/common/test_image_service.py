@@ -15,6 +15,7 @@ from http import client as http_client
 import io
 import os
 import shutil
+import tempfile
 from unittest import mock
 
 from oslo_config import cfg
@@ -1742,3 +1743,246 @@ class ServiceGetterTestCase(base.TestCase):
         self.assertFalse(image_service.is_container_registry_url(None))
         self.assertFalse(image_service.is_container_registry_url('https://'))
         self.assertTrue(image_service.is_container_registry_url('oci://.'))
+
+
+class NfsImageServiceTestCase(base.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.nfs_service = image_service.NfsImageService()
+
+    def test_validate_href_valid_nfs_url(self):
+        """Test validation of valid NFS URLs."""
+        valid_urls = [
+            'nfs://example.com/path/to/image.iso',
+            'nfs://192.168.1.100/share/image.iso',
+            'nfs://nfs-server.local/images/deploy.iso',
+        ]
+
+        for url in valid_urls:
+            # Should not raise an exception
+            self.nfs_service.validate_href(url)
+
+    def test_validate_href_invalid_scheme(self):
+        """Test validation rejects non-NFS schemes."""
+        invalid_urls = [
+            'http://example.com/image.iso',
+            'https://example.com/image.iso',
+            'file:///path/to/image.iso',
+            'ftp://example.com/image.iso',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.nfs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_missing_host(self):
+        """Test validation rejects NFS URLs without host."""
+        invalid_urls = [
+            'nfs:///path/to/image.iso',
+            'nfs://',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.nfs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_missing_path(self):
+        """Test validation rejects NFS URLs without path."""
+        invalid_urls = [
+            'nfs://example.com',
+            'nfs://192.168.1.100',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.nfs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_malformed_url(self):
+        """Test validation rejects malformed URLs."""
+        malformed_urls = [
+            'not-a-url',
+            'nfs://',
+            'nfs://example.com:',
+        ]
+
+        for url in malformed_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.nfs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_secret_url(self):
+        """Test validation with secret URL doesn't expose URL in logs."""
+        url = 'nfs://example.com/path/to/image.iso'
+
+        self.nfs_service.validate_href(url, secret=True)
+
+    def test_download_nfs_url(self):
+        """Test validates NFS URL and raises NotImplementedError."""
+        url = 'nfs://example.com/path/to/image.iso'
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            self.assertRaises(NotImplementedError,
+                              self.nfs_service.download, url, temp_file)
+
+    def test_show_nfs_url(self):
+        """Test show method returns minimal metadata for NFS URL."""
+        url = 'nfs://example.com/path/to/image.iso'
+
+        metadata = self.nfs_service.show(url)
+
+        # Should only return minimal metadata
+        expected_keys = ['id', 'name', 'properties']
+        for key in expected_keys:
+            self.assertIn(key, metadata)
+
+        self.assertEqual(url, metadata['id'])
+        self.assertEqual(url, metadata['name'])
+        self.assertEqual({}, metadata['properties'])
+
+        # Should not include unknown fields
+        self.assertNotIn('size', metadata)
+        self.assertNotIn('disk_format', metadata)
+        self.assertNotIn('status', metadata)
+
+    def test_protocol_mapping_includes_nfs(self):
+        """Test that NFS is included in the protocol mapping."""
+        self.assertIn('nfs', image_service.protocol_mapping)
+        self.assertEqual(
+            image_service.NfsImageService,
+            image_service.protocol_mapping['nfs']
+        )
+
+    def test_get_image_service_nfs(self):
+        """Test that get_image_service returns NfsImageService for NFS URLs.
+
+        """
+        url = 'nfs://example.com/path/to/image.iso'
+
+        service = image_service.get_image_service(url)
+        self.assertIsInstance(service, image_service.NfsImageService)
+
+
+class CifsImageServiceTestCase(base.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.cifs_service = image_service.CifsImageService()
+
+    def test_validate_href_valid_cifs_url(self):
+        """Test validation of valid CIFS URLs."""
+        valid_urls = [
+            'cifs://example.com/path/to/image.iso',
+            'cifs://192.168.1.100/share/image.iso',
+            'cifs://server.local/images/deploy.iso',
+            'smb://example.com/path/to/image.iso',
+            'cifs://user@server/share/image.iso',
+            'cifs://user:pass@server/share/image.iso',
+        ]
+
+        for url in valid_urls:
+            # Should not raise an exception
+            self.cifs_service.validate_href(url)
+
+    def test_validate_href_invalid_scheme(self):
+        """Test validation rejects non-CIFS schemes."""
+        invalid_urls = [
+            'http://example.com/image.iso',
+            'nfs://example.com/image.iso',
+            'file:///path/to/image.iso',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.cifs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_missing_host(self):
+        """Test validation rejects CIFS URLs without host."""
+        invalid_urls = [
+            'cifs:///path/to/image.iso',
+            'cifs://',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.cifs_service.validate_href,
+                url
+            )
+
+    def test_validate_href_missing_path(self):
+        """Test validation rejects CIFS URLs without path."""
+        invalid_urls = [
+            'cifs://example.com',
+            'cifs://192.168.1.100',
+        ]
+
+        for url in invalid_urls:
+            self.assertRaises(
+                exception.ImageRefValidationFailed,
+                self.cifs_service.validate_href,
+                url
+            )
+
+    def test_download_cifs_url(self):
+        """Test validates CIFS URL and raises NotImplementedError."""
+        url = 'cifs://example.com/path/to/image.iso'
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            self.assertRaises(NotImplementedError,
+                              self.cifs_service.download, url, temp_file)
+
+    def test_show_cifs_url(self):
+        """Test show method returns minimal metadata for CIFS URL."""
+        url = 'cifs://example.com/path/to/image.iso'
+
+        metadata = self.cifs_service.show(url)
+
+        # Should only return minimal metadata
+        expected_keys = ['id', 'name', 'properties']
+        for key in expected_keys:
+            self.assertIn(key, metadata)
+
+        self.assertEqual(url, metadata['id'])
+        self.assertEqual(url, metadata['name'])
+        self.assertEqual({}, metadata['properties'])
+
+    def test_protocol_mapping_includes_cifs(self):
+        """Test that CIFS is included in the protocol mapping."""
+        self.assertIn('cifs', image_service.protocol_mapping)
+        self.assertIn('smb', image_service.protocol_mapping)
+        self.assertEqual(
+            image_service.CifsImageService,
+            image_service.protocol_mapping['cifs']
+        )
+        self.assertEqual(
+            image_service.CifsImageService,
+            image_service.protocol_mapping['smb']
+        )
+
+    def test_get_image_service_cifs(self):
+        """Test that get_image_service returns CifsImageService for CIFS URLs.
+
+        """
+        url = 'cifs://example.com/path/to/image.iso'
+
+        service = image_service.get_image_service(url)
+        self.assertIsInstance(service, image_service.CifsImageService)
+
+        url_smb = 'smb://example.com/path/to/image.iso'
+        service_smb = image_service.get_image_service(url_smb)
+        self.assertIsInstance(service_smb, image_service.CifsImageService)
