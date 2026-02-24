@@ -53,7 +53,7 @@ An example of this is shown in the :ref:`enrollment` section.
 
       [ml2]
       type_drivers = flat
-      tenant_network_types = flat
+      project_network_types = flat
       mechanism_drivers = openvswitch,baremetal
 
       [ml2_type_flat]
