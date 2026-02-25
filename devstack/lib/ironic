@@ -1704,7 +1704,14 @@ function configure_ironic_provision_network {
     sudo ip link set dev $OVS_PHYSICAL_BRIDGE up
     if [[ "$IRONIC_IP_VERSION" == "4" ]]; then
         if [[ "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE" == "vlan" ]]; then
-            openstack --os-cloud $OS_CLOUD router add subnet $IRONIC_ROUTER_NAME $subnet_id
+            if [[ "$HOST_TOPOLOGY_ROLE" != "subnode" ]]; then
+                # NOTE(TheJulia): This router add may be spurious, but it is
+                # also the "right" way to handle routing and traffic in an
+                # integrated form. The direct attachment method is sloppy and
+                # doesn't expose us to the rest of the networking layer.
+                # Anyway, only the primary devstack node has this variable.
+                openstack --os-cloud $OS_CLOUD router add subnet $IRONIC_ROUTER_NAME $subnet_id
+            fi
             sudo ip link add link $OVS_PHYSICAL_BRIDGE name $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID type vlan id $IRONIC_PROVISION_SEGMENTATION_ID
             sudo ip link set dev $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID up
             sudo ip -$IRONIC_IP_VERSION addr add dev $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID $ironic_provision_network_ip/$provision_net_prefix
