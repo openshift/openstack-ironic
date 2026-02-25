@@ -1630,8 +1630,7 @@ function configure_ironic_provision_network {
         die_if_not_set $LINENO IRONIC_PROVISION_SUBNET_GATEWAY "You must specify the IRONIC_PROVISION_SUBNET_GATEWAY"
         # Determine the type of network we need to create and what parameters we need to pass
         # based upon the requested network type.
-        echo "vxlan geneve" | grep -q "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE"
-        if [ $? -ne 0 ]; then
+        if ! echo "vxlan geneve" | grep -q "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE"; then
             # We are being called with "flat" or "vlan" and not "vxlan" or "geneve"
             net_id=$(openstack --os-cloud $OS_CLOUD network create --provider-network-type $IRONIC_PROVISION_PROVIDER_NETWORK_TYPE \
                 --provider-physical-network "$PHYSICAL_NETWORK" \
