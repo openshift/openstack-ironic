@@ -1600,7 +1600,7 @@ class RedfishRAIDMAXSizeTestCase(db_base.DbTestCase):
         }
         created_volumes = [
             _mock_volume('1', raid_type=sushy.RAIDType.RAID1,
-                        capacity_bytes=899527000000)
+                         capacity_bytes=899527000000)
         ]
         volumes = mock.MagicMock()
         volumes.get_members.return_value = created_volumes
@@ -1642,7 +1642,7 @@ class RedfishRAIDMAXSizeTestCase(db_base.DbTestCase):
         }
         created_volumes = [
             _mock_volume('1', raid_type=sushy.RAIDType.RAID1,
-                        capacity_bytes=100 * units.Gi)
+                         capacity_bytes=100 * units.Gi)
         ]
         volumes = mock.MagicMock()
         volumes.get_members.return_value = created_volumes
@@ -1674,7 +1674,7 @@ class RedfishRAIDMAXSizeTestCase(db_base.DbTestCase):
         actual_size_bytes = 899527000000  # Actual size from controller
         created_volumes = [
             _mock_volume('1', raid_type=sushy.RAIDType.RAID1,
-                        capacity_bytes=actual_size_bytes)
+                         capacity_bytes=actual_size_bytes)
         ]
         volumes = mock.MagicMock()
         volumes.get_members.return_value = created_volumes

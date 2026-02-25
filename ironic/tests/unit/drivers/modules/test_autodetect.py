@@ -95,7 +95,7 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
         self.assertEqual({}, props)
 
     @mock.patch.object(autodetect.AutodetectDeploy,
-                      '_create_switchable_interface', autospec=True)
+                       '_create_switchable_interface', autospec=True)
     def test_validate(self, mock_create_switch):
         """Test validate calls validate on the switched interface."""
         mock_interface = mock.MagicMock()
@@ -114,7 +114,7 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
         """
         with task_manager.acquire(self.context, self.node.uuid) as task:
             self.assertRaises(exception.InstanceDeployFailure,
-                            self.deploy.deploy, task)
+                              self.deploy.deploy, task)
 
     def test_tear_down(self):
         """Test tear_down completes without error."""
@@ -131,7 +131,7 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
         """
         with task_manager.acquire(self.context, self.node.uuid) as task:
             self.assertRaises(exception.InstanceDeployFailure,
-                            self.deploy.prepare, task)
+                              self.deploy.prepare, task)
 
     def test_clean_up(self):
         """Test clean_up completes without error."""
@@ -230,11 +230,11 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
 
         with task_manager.acquire(self.context, self.node.uuid) as task:
             self.assertRaises(exception.InvalidParameterValue,
-                            self.deploy._create_switchable_interface, task)
+                              self.deploy._create_switchable_interface, task)
 
     @mock.patch.object(autodetect.LOG, 'info', autospec=True)
     @mock.patch.object(autodetect.AutodetectDeploy,
-                      '_create_switchable_interface', autospec=True)
+                       '_create_switchable_interface', autospec=True)
     def test_switch_interface(self, mock_create_switch, mock_log_info):
         """Test switch_interface switches to detected interface."""
         mock_interface = mock.MagicMock()
@@ -260,7 +260,7 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
     @mock.patch.object(autodetect.LOG, 'warning', autospec=True)
     @mock.patch.object(autodetect.LOG, 'info', autospec=True)
     @mock.patch.object(autodetect.AutodetectDeploy,
-                      '_create_switchable_interface', autospec=True)
+                       '_create_switchable_interface', autospec=True)
     def test_switch_interface_not_supported(self, mock_create_switch,
                                             mock_log_info, mock_log_warning):
         """Test switch_interface with no supported interface."""
@@ -282,7 +282,7 @@ class AutodetectDeployTestCase(db_base.DbTestCase):
             self.assertEqual(mock_interface, task.driver.deploy)
 
     @mock.patch.object(autodetect.AutodetectDeploy,
-                      '_create_switchable_interface', autospec=True)
+                       '_create_switchable_interface', autospec=True)
     def test_switch_interface_preserves_node_state(self, mock_create_switch):
         """Test switch_interface saves node state correctly."""
         mock_interface = mock.MagicMock()

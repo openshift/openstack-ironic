@@ -198,15 +198,15 @@ def plan_vif_attach(traits: list[base.NetworkTrait],
 
     # TODO(clif): Maybe this should raise, because vif_attach raises when
     # it can't find a free port or portgroup to attach.
-    return [base.NoMatch(base.TraitAction(
-                            'plan_vif_attach',
-                            base.Actions.ATTACH_PORT,
-                            base.FilterExpression.parse(
-                                "port.category == 'plan_vif_attach'")),
-                        task.node.uuid,
-                        _("Could not find an applicable port or portgroup to "
-                          f"attach to network '{net.id}' in any applicable "
-                          "trait."))]
+    return [base.NoMatch(
+        base.TraitAction(
+            'plan_vif_attach',
+            base.Actions.ATTACH_PORT,
+            base.FilterExpression.parse("port.category == 'plan_vif_attach'")),
+        task.node.uuid,
+        _("Could not find an applicable port or portgroup to "
+          f"attach to network '{net.id}' in any applicable "
+          "trait."))]
 
 
 def filter_traits_for_node(node: Node,

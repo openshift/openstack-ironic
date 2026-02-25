@@ -151,7 +151,7 @@ class AutodetectDeploy(base.DeployInterface):
             self._validate_autodetect_interface(interface_name)
             # Get the new deploy interface instance from the factory
             interface = driver_factory.get_interface(
-            hw_type, 'deploy', interface_name)
+                hw_type, 'deploy', interface_name)
 
             interface_supports = interface.supports_deploy(task)
             if interface_supports:

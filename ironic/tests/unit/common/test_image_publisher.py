@@ -14,6 +14,7 @@ import os
 import shutil
 from unittest import mock
 
+from ironic.common import exception
 from ironic.common import image_publisher
 from ironic.common import utils
 from ironic.tests.unit.db import base as db_base
@@ -180,3 +181,101 @@ class LocalPublisherTestCase(db_base.DbTestCase):
         self.publisher.unpublish(object_name)
 
         mock_unlink.assert_called_once_with(expected_file)
+
+
+class NFSPublisherTestCase(db_base.DbTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.config(base_url='nfs://server/export', group='nfs')
+        self.config(share_path='/mnt/nfs/ironic', group='nfs')
+
+    @mock.patch.object(shutil, 'copy2', autospec=True)
+    @mock.patch.object(os, 'makedirs', autospec=True)
+    def test_publish(self, mock_makedirs, mock_copy2):
+        publisher = image_publisher.NFSPublisher()
+        url = publisher.publish('/tmp/file.iso', 'boot.iso')
+        self.assertEqual(
+            'nfs://server/export/mnt/nfs/ironic/boot.iso', url)
+        mock_makedirs.assert_called_once_with(
+            '/mnt/nfs/ironic', exist_ok=True)
+        mock_copy2.assert_called_once_with(
+            '/tmp/file.iso', '/mnt/nfs/ironic/boot.iso')
+
+    def test_publish_missing_base_url(self):
+        self.config(base_url=None, group='nfs')
+        publisher = image_publisher.NFSPublisher()
+        self.assertRaises(
+            exception.InvalidParameterValue,
+            publisher.publish, '/tmp/file.iso', 'boot.iso')
+
+    def test_publish_missing_share_path(self):
+        self.config(share_path=None, group='nfs')
+        publisher = image_publisher.NFSPublisher()
+        self.assertRaises(
+            exception.InvalidParameterValue,
+            publisher.publish, '/tmp/file.iso', 'boot.iso')
+
+    @mock.patch.object(utils, 'unlink_without_raise', autospec=True)
+    def test_unpublish(self, mock_unlink):
+        publisher = image_publisher.NFSPublisher()
+        publisher.unpublish('boot.iso')
+        mock_unlink.assert_called_once_with(
+            '/mnt/nfs/ironic/boot.iso')
+
+
+class CIFSPublisherTestCase(db_base.DbTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.config(base_url='cifs://server/share', group='cifs')
+        self.config(share_path='/mnt/cifs/ironic', group='cifs')
+        self.config(username='user', group='cifs')
+        self.config(password='pass', group='cifs')
+
+    @mock.patch.object(shutil, 'copy2', autospec=True)
+    @mock.patch.object(os, 'makedirs', autospec=True)
+    def test_publish(self, mock_makedirs, mock_copy2):
+        publisher = image_publisher.CIFSPublisher()
+        url = publisher.publish('/tmp/file.iso', 'boot.iso')
+        self.assertEqual(
+            'cifs://server/share/mnt/cifs/ironic/boot.iso', url)
+        mock_makedirs.assert_called_once_with(
+            '/mnt/cifs/ironic', exist_ok=True)
+        mock_copy2.assert_called_once_with(
+            '/tmp/file.iso', '/mnt/cifs/ironic/boot.iso')
+
+    def test_publish_missing_base_url(self):
+        self.config(base_url=None, group='cifs')
+        publisher = image_publisher.CIFSPublisher()
+        self.assertRaises(
+            exception.InvalidParameterValue,
+            publisher.publish, '/tmp/file.iso', 'boot.iso')
+
+    def test_publish_missing_share_path(self):
+        self.config(share_path=None, group='cifs')
+        publisher = image_publisher.CIFSPublisher()
+        self.assertRaises(
+            exception.InvalidParameterValue,
+            publisher.publish, '/tmp/file.iso', 'boot.iso')
+
+    @mock.patch.object(utils, 'unlink_without_raise', autospec=True)
+    def test_unpublish(self, mock_unlink):
+        publisher = image_publisher.CIFSPublisher()
+        publisher.unpublish('boot.iso')
+        mock_unlink.assert_called_once_with(
+            '/mnt/cifs/ironic/boot.iso')
+
+    def test_get_credentials(self):
+        publisher = image_publisher.CIFSPublisher()
+        username, password = publisher.get_credentials()
+        self.assertEqual('user', username)
+        self.assertEqual('pass', password)
+
+    def test_get_credentials_none(self):
+        self.config(username=None, group='cifs')
+        self.config(password=None, group='cifs')
+        publisher = image_publisher.CIFSPublisher()
+        username, password = publisher.get_credentials()
+        self.assertIsNone(username)
+        self.assertIsNone(password)

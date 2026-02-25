@@ -234,6 +234,16 @@ When Ironic goes to unbind the VIF, Ironic makes a request for Neutron to
 "reset" the assigned MAC address in order to avoid conflicts with Neutron's
 unique hardware MAC address requirement.
 
+.. NOTE::
+   For advanced networking scenarios where network bindings need to be
+   refreshed on an active instance without rebooting, the ``neutron``
+   network interface provides a ``reattach_networking`` service step.
+   This is useful for VXLAN topology changes, network infrastructure
+   migrations, or recovering from stale binding states. See
+   :ref:`servicing` for more details on using this service step, and
+   :ref:`troubleshooting` for detailed usage guidance in the
+   "Reattaching networking on active instances" section.
+
 Basic Provisioning flow
 ~~~~~~~~~~~~~~~~~~~~~~~
 

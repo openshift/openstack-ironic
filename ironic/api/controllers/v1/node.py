@@ -45,6 +45,7 @@ from ironic.common import boot_devices
 from ironic.common import boot_modes
 from ironic.common import exception
 from ironic.common.i18n import _
+from ironic.common import image_publisher
 from ironic.common import metrics_utils
 from ironic.common import policy
 from ironic.common import state_machine
@@ -2292,8 +2293,9 @@ class NodeVmediaController(rest.RestController, GetNodeAndTopicMixin):
         """
         parsed_url = urllib.parse.urlparse(vmedia['image_url'])
         # NOTE(dtantsur): we may eventually support glance images, but for now
-        # let us reject everything that is not http/https.
-        if parsed_url.scheme not in ('http', 'https'):
+        # let us reject everything that is not http/https/nfs/cifs.
+        if (parsed_url.scheme
+            not in image_publisher.VMEDIA_SUPPORTED_URL_SCHEMES):
             raise exception.Invalid(_("Unsupported or missing URL scheme: %s")
                                     % parsed_url.scheme)
 

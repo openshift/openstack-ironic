@@ -87,17 +87,21 @@ class TestNetworkDataFile(object):
                                                  "the test data file!")
 
         self._ports = [
-            tbn.Port(test_utils.FauxPortLikeObject(**port))
+            tbn.Port.from_ironic_port(test_utils.FauxPortLikeObject(**port))
             for port in self._contents['ports']
         ]
 
         self._portgroups = [
-            tbn.Portgroup(test_utils.FauxPortLikeObject(**portgroup))
+            tbn.Portgroup.from_ironic_portgroup(
+                test_utils.FauxPortLikeObject(**portgroup))
             for portgroup in self._contents['portgroups']
         ]
 
         self._networks = [
-            tbn.Network(**network)
+            tbn.Network(
+                id=network['id'],
+                name=network['name'],
+                tags=frozenset(network.get('tags', ())))
             for network in self._contents['networks']
         ]
 

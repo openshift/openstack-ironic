@@ -123,6 +123,18 @@ field:
     authentication should generally be used in most cases as it prevents
     re-authentication every time a background task checks in with the BMC.
 
+``vmedia_transport_protocol``
+    Override transport protocol selection for virtual media. Valid values are
+    ``HTTP``, ``NFS`` (NFSv3), or ``CIFS``. If not set, HTTP is used by
+    default. This setting must be supported by the BMC.
+
+    .. note::
+       NFS uses NFSv3 and does not send credentials to the BMC. CIFS/SMB
+       supports optional username/password authentication configured via
+       ``[cifs]username`` and ``[cifs]password``. Both NFS and CIFS require
+       operators to mount the respective share at ``[nfs]share_path`` or
+       ``[cifs]share_path`` on all conductor hosts.
+
 .. note::
    The ``redfish_address``, ``redfish_username``, ``redfish_password``,
    and ``redfish_verify_ca`` fields, if changed, will trigger a new session
@@ -275,6 +287,14 @@ with the Wallaby release it's possible to provide a pre-built ISO image:
 .. note::
    OpenStack Image service (glance) image IDs and ``file://`` links are also
    accepted.
+
+.. note::
+   NFS (NFSv3) and CIFS/SMB transport protocols are supported for virtual media
+   attachment in addition to HTTP(S). HTTP is used by default. To use NFS or
+   CIFS, configure the shares using ``[nfs]base_url``/``[nfs]share_path`` or
+   ``[cifs]base_url``/``[cifs]share_path``, and set
+   ``driver_info[vmedia_transport_protocol]`` on each node. Operators are
+   responsible for mounting the share on all conductor hosts.
 
 .. note::
    Before the Xena release the parameters were called ``redfish_deploy_iso``

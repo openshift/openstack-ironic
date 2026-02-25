@@ -11,6 +11,7 @@
 #    under the License.
 
 import abc
+import os
 import os.path
 import shutil
 from urllib import parse as urlparse
@@ -18,15 +19,18 @@ from urllib import parse as urlparse
 from oslo_log import log
 
 from ironic.common import exception
+from ironic.common.i18n import _
 from ironic.common import swift
 from ironic.common import utils
 from ironic.conf import CONF
 
 LOG = log.getLogger(__name__)
 
+VMEDIA_SUPPORTED_URL_SCHEMES = ('http', 'https', 'nfs', 'cifs', 'smb')
+
 
 class AbstractPublisher(metaclass=abc.ABCMeta):
-    """Abstract base class for publishing images via HTTP."""
+    """Abstract base class for publishing images."""
 
     @abc.abstractmethod
     def publish(self, source_path, file_name=None):
@@ -35,7 +39,7 @@ class AbstractPublisher(metaclass=abc.ABCMeta):
         :param source_path: Path to the source file.
         :param file_name: Destination file name. If None, the file component
             of source_path is used.
-        :return: The HTTP URL of the published image.
+        :return: The URL of the published image.
         """
 
     @abc.abstractmethod
@@ -184,3 +188,89 @@ class SwiftPublisher(AbstractPublisher):
         except exception.SwiftOperationError as exc:
             LOG.warning("Failed to clean up image %(image)s. Error: "
                         "%(error)s.", {'image': file_name, 'error': exc})
+
+
+class NFSPublisher(AbstractPublisher):
+    """Image publisher using an NFS share."""
+
+    def __init__(self):
+        self.base_url = CONF.nfs.base_url
+        self.share_path = CONF.nfs.share_path
+
+    def publish(self, source_path, file_name=None):
+        if not file_name:
+            file_name = os.path.basename(source_path)
+        if not self.base_url:
+            raise exception.InvalidParameterValue(
+                _("NFS protocol selected but [nfs]base_url is not "
+                  "configured"))
+        if not self.share_path:
+            raise exception.InvalidParameterValue(
+                _("NFS protocol selected but [nfs]share_path is not "
+                  "configured"))
+
+        os.makedirs(self.share_path, exist_ok=True)
+        dest_path = os.path.join(self.share_path, file_name)
+        shutil.copy2(source_path, dest_path)
+
+        base = self.base_url.rstrip('/')
+        share = self.share_path.lstrip('/')
+        url = f"{base}/{share}/{file_name}"
+
+        LOG.debug("Published image %(name)s to NFS share at %(dest)s, "
+                  "URL: %(url)s",
+                  {'name': file_name, 'dest': dest_path, 'url': url})
+        return url
+
+    def unpublish(self, file_name):
+        if self.share_path:
+            path = os.path.join(self.share_path, file_name)
+            utils.unlink_without_raise(path)
+
+
+class CIFSPublisher(AbstractPublisher):
+    """Image publisher using a CIFS/SMB share."""
+
+    def __init__(self):
+        self.base_url = CONF.cifs.base_url
+        self.share_path = CONF.cifs.share_path
+        self.username = CONF.cifs.username
+        self.password = CONF.cifs.password
+
+    def publish(self, source_path, file_name=None):
+        if not file_name:
+            file_name = os.path.basename(source_path)
+        if not self.base_url:
+            raise exception.InvalidParameterValue(
+                _("CIFS protocol selected but [cifs]base_url is not "
+                  "configured"))
+        if not self.share_path:
+            raise exception.InvalidParameterValue(
+                _("CIFS protocol selected but [cifs]share_path is not "
+                  "configured"))
+
+        os.makedirs(self.share_path, exist_ok=True)
+        dest_path = os.path.join(self.share_path, file_name)
+        shutil.copy2(source_path, dest_path)
+
+        base = self.base_url.rstrip('/')
+        share = self.share_path.lstrip('/')
+        url = f"{base}/{share}/{file_name}"
+
+        LOG.debug("Published image %(name)s to CIFS share at %(dest)s, "
+                  "URL: %(url)s",
+                  {'name': file_name, 'dest': dest_path, 'url': url})
+        return url
+
+    def unpublish(self, file_name):
+        if self.share_path:
+            path = os.path.join(self.share_path, file_name)
+            utils.unlink_without_raise(path)
+
+    def get_credentials(self):
+        """Return credentials for CIFS authentication.
+
+        :returns: tuple of (username, password) or (None, None) if no
+            credentials configured.
+        """
+        return (self.username, self.password)

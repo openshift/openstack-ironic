@@ -43,7 +43,8 @@ METRICS = metrics_utils.get_metrics_logger(__name__)
 
 def validate_vlan_configuration(
     operation,
-    switch_id_arg_name="switch_id"):
+    switch_id_arg_name="switch_id",
+):
     """Decorator to validate VLAN configuration against allowed/denied lists.
 
     This decorator extracts native_vlan and allowed_vlans from method

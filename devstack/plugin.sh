@@ -75,7 +75,7 @@ if is_service_enabled ir-api ir-cond ir-novnc; then
                 create_bridge_and_vms
             fi
 
-            if is_service_enabled neutron || [[ "$HOST_TOPOLOGY" == "multinode" ]]; then
+            if is_service_enabled q-svc || is_service_enabled neutron || [[ "$HOST_TOPOLOGY" == "multinode" ]]; then
                 echo_summary "Configuring Ironic networks"
                 configure_ironic_networks
             fi
@@ -87,6 +87,15 @@ if is_service_enabled ir-api ir-cond ir-novnc; then
             prepare_baremetal_basic_ops
             echo_summary "Starting Ironic"
             start_ironic
+
+            # Configure neutron DHCP after neutron is fully initialized
+            # but before enrolling nodes which may depend on it
+            if is_service_enabled q-dhcp neutron-dhcp; then
+                echo_summary "Configuring Neutron DHCP for IPv6"
+                async_wait init_neutron
+                configure_neutron_dhcp_enable_addr6_list
+            fi
+
             enroll_nodes
 
         elif [[ "$2" == "test-config" ]]; then

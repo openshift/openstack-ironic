@@ -1077,8 +1077,8 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
 
         # Test each of the three active states
         for task_state in [sushy.TASK_STATE_RUNNING,
-                          sushy.TASK_STATE_STARTING,
-                          sushy.TASK_STATE_PENDING]:
+                           sushy.TASK_STATE_STARTING,
+                           sushy.TASK_STATE_PENDING]:
             log_mock.reset_mock()
 
             tm_mock.return_value.is_processing = False
@@ -2578,8 +2578,8 @@ class RedfishFirmwareTestCase(db_base.DbTestCase):
                 task.node = objects.Node.get(self.context, task.node.uuid)
 
             with mock.patch.object(task, 'upgrade_lock',
-                                 side_effect=mock_upgrade_lock,
-                                 autospec=True):
+                                   side_effect=mock_upgrade_lock,
+                                   autospec=True):
                 # Call the actual method being tested
                 firmware_interface = redfish_fw.RedfishFirmware()
                 result = firmware_interface._handle_bios_task_starting(

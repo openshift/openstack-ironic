@@ -221,8 +221,8 @@ class DracRedfishInspectionTestCase(test_utils.BaseDracTest):
                        '_get_dell_switch_connections', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
     def test_collect_lldp_data_fallback_to_standard(self, mock_get_system,
-                                                   mock_get_connections,
-                                                   mock_super_collect):
+                                                    mock_get_connections,
+                                                    mock_super_collect):
         """Test fallback to standard Redfish LLDP when Dell OEM fails."""
         system_mock = self._setup_lldp_system_mock(mock_get_system)
 

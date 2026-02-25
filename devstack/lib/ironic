@@ -583,6 +583,8 @@ else
 fi
 
 IRONIC_ROUTER_NAME=${Q_ROUTER_NAME:-router1}
+# Dedicated router for VXLAN provisioning to isolate SNAT settings
+IRONIC_PROVISION_VXLAN_ROUTER_NAME=${IRONIC_PROVISION_VXLAN_ROUTER_NAME:-ironic-prov-router}
 
 # Ironic provision subnet name.
 # This is only used if IRONIC_PROVISION_NETWORK_NAME has been set.
@@ -592,6 +594,14 @@ IRONIC_PROVISION_PROVIDER_SUBNET_NAME=${IRONIC_PROVISION_PROVIDER_SUBNET_NAME:-$
 # and subnet-to-segment association on provisioning network will be configured.
 # NOTE: The neutron segments service_plugin must be loaded for this.
 IRONIC_USE_NEUTRON_SEGMENTS=$(trueorfalse False IRONIC_USE_NEUTRON_SEGMENTS)
+
+# When enabled this will set the physical_network attribute for ironic ports
+# for use with hierarchical port binding on overlay networks (vxlan/geneve).
+# Unlike IRONIC_USE_NEUTRON_SEGMENTS, this does NOT associate subnets with
+# segments, avoiding routed provider network validation.
+# NOTE: The neutron segments service_plugin must be loaded for this.
+# NOTE: This is mutually exclusive with IRONIC_USE_NEUTRON_SEGMENTS.
+IRONIC_USE_VXLAN=$(trueorfalse False IRONIC_USE_VXLAN)
 
 # This is the storage interface to use for a node
 # Only 'cinder' can be set for testing boot from volume
@@ -1595,7 +1605,6 @@ function configure_ironic_provision_network {
         # if we're in a multinode topology, we need to pin this down to match.
         iniset $NEUTRON_CONF DEFAULT global_physnet_mtu "$PUBLIC_BRIDGE_MTU"
     fi
-    configure_neutron_dhcp_enable_addr6_list
     if [[ "$IRONIC_IP_VERSION" == "6" ]]; then
         # NOTE(TheJulia): Ideally we should let this happen
         # with our global address, but iPXE seems to have in
@@ -1619,19 +1628,35 @@ function configure_ironic_provision_network {
         die_if_not_set $LINENO IRONIC_PROVISION_SUBNET_PREFIX "You must specify the IRONIC_PROVISION_SUBNET_PREFIX"
         die_if_not_set $LINENO PHYSICAL_NETWORK "You must specify the PHYSICAL_NETWORK"
         die_if_not_set $LINENO IRONIC_PROVISION_SUBNET_GATEWAY "You must specify the IRONIC_PROVISION_SUBNET_GATEWAY"
-
-        net_id=$(openstack --os-cloud $OS_CLOUD network create --provider-network-type $IRONIC_PROVISION_PROVIDER_NETWORK_TYPE \
-            --provider-physical-network "$PHYSICAL_NETWORK" \
-            ${IRONIC_PROVISION_SEGMENTATION_ID:+--provider-segment $IRONIC_PROVISION_SEGMENTATION_ID} \
-            ${IRONIC_PROVISION_NETWORK_NAME} -f value -c id)
+        # Determine the type of network we need to create and what parameters we need to pass
+        # based upon the requested network type.
+        if ! echo "vxlan geneve" | grep -q "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE"; then
+            # We are being called with "flat" or "vlan" and not "vxlan" or "geneve"
+            net_id=$(openstack --os-cloud $OS_CLOUD network create --provider-network-type $IRONIC_PROVISION_PROVIDER_NETWORK_TYPE \
+                --provider-physical-network "$PHYSICAL_NETWORK" \
+                ${IRONIC_PROVISION_SEGMENTATION_ID:+--provider-segment $IRONIC_PROVISION_SEGMENTATION_ID} \
+                ${IRONIC_PROVISION_NETWORK_NAME} -f value -c id)
+        else
+            # NOTE(TheJulia): If the job is configured for geneve or vxlan,
+            # then we don't configure anything regarding provider networks,
+            # and we let neutron auto-allocate the segmentation ID.
+            # Such configurations *require* networking-baremetal to be loaded.
+            net_id=$(openstack --os-cloud $OS_CLOUD network create ${IRONIC_PROVISION_NETWORK_NAME} -f value -c id)
+        fi
 
         die_if_not_set $LINENO net_id "Failure creating net_id for $IRONIC_PROVISION_NETWORK_NAME"
 
+        # For routed provider networks, associate subnet with segment.
+        # For hierarchical binding (VXLAN), do NOT associate to avoid
+        # routed provider network validation.
         if [[ "${IRONIC_USE_NEUTRON_SEGMENTS}" == "True" ]]; then
             local net_segment_id
             net_segment_id=$(openstack --os-cloud $OS_CLOUD network segment list --network $net_id -f value -c ID)
             die_if_not_set $LINENO net_segment_id "Failure getting net_segment_id for $IRONIC_PROVISION_NETWORK_NAME"
         fi
+        # Note: IRONIC_USE_VXLAN deliberately does NOT set net_segment_id to avoid
+        # associating subnets with segments, which would trigger routed provider
+        # network validation requiring SegmentHostMapping.
 
         local subnet_id
         if [[ "$IRONIC_IP_VERSION" == '4' ]]; then
@@ -1679,11 +1704,41 @@ function configure_ironic_provision_network {
     sudo ip link set dev $OVS_PHYSICAL_BRIDGE up
     if [[ "$IRONIC_IP_VERSION" == "4" ]]; then
         if [[ "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE" == "vlan" ]]; then
+            openstack --os-cloud $OS_CLOUD router add subnet $IRONIC_ROUTER_NAME $subnet_id
             sudo ip link add link $OVS_PHYSICAL_BRIDGE name $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID type vlan id $IRONIC_PROVISION_SEGMENTATION_ID
             sudo ip link set dev $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID up
             sudo ip -$IRONIC_IP_VERSION addr add dev $OVS_PHYSICAL_BRIDGE.$IRONIC_PROVISION_SEGMENTATION_ID $ironic_provision_network_ip/$provision_net_prefix
-        else
+        elif [[ "$IRONIC_PROVISION_PROVIDER_NETWORK_TYPE" == "flat" ]]; then
             sudo ip -$IRONIC_IP_VERSION addr add dev $OVS_PHYSICAL_BRIDGE $ironic_provision_network_ip/$provision_net_prefix
+        else
+            # VXLAN/GENEVE - create dedicated router with SNAT disabled
+            if [[ "${IRONIC_USE_VXLAN}" == "True" ]]; then
+                # Create dedicated router for provisioning network
+                openstack --os-cloud $OS_CLOUD router create $IRONIC_PROVISION_VXLAN_ROUTER_NAME || true
+                # Set external gateway with SNAT disabled to avoid NAT issues
+                openstack --os-cloud $OS_CLOUD router set --disable-snat --external-gateway $PUBLIC_PHYSICAL_NETWORK $IRONIC_PROVISION_VXLAN_ROUTER_NAME
+                # Add provisioning subnet to the router
+                openstack --os-cloud $OS_CLOUD router add subnet $IRONIC_PROVISION_VXLAN_ROUTER_NAME $subnet_id
+                # Store router ID for use in other functions
+                PUBLIC_ROUTER_ID=$(openstack --os-cloud $OS_CLOUD router show -c id -f value $IRONIC_PROVISION_VXLAN_ROUTER_NAME)
+
+                # Configure return routing through the dedicated VXLAN router
+                local external_gw_v4
+                external_gw_v4=$(openstack --os-cloud $OS_CLOUD router show $IRONIC_PROVISION_VXLAN_ROUTER_NAME -c external_gateway_info -f json | jq -r .external_gateway_info.external_fixed_ips[0].ip_address)
+
+                # Ensure br-ex is up for routing
+                sudo ip link set dev br-ex up || true
+
+                # Calculate MTU values for the route to account for VXLAN overhead
+                local mtu=$(($PUBLIC_BRIDGE_MTU - 30))
+                local v4mss=$(($PUBLIC_BRIDGE_MTU - 40))
+
+                # Add route to provisioning network via the router's external gateway
+                # Lock MTU to disable PMTU discovery and set MSS for proper packet sizing
+                sudo ip route add $IRONIC_PROVISION_SUBNET_PREFIX via $external_gw_v4 mtu lock $mtu advmss $v4mss
+            else
+                openstack --os-cloud $OS_CLOUD router add subnet $IRONIC_ROUTER_NAME $subnet_id
+            fi
         fi
     else
         # Turn on the external/integration bridges, for IPV6.
@@ -1705,6 +1760,16 @@ function cleanup_ironic_provision_network {
         sudo ip link set dev $sub_int down
         sudo ip link del dev $sub_int
     done
+
+    # Cleanup dedicated VXLAN router if it exists
+    if [[ "${IRONIC_USE_VXLAN}" == "True" ]]; then
+        local subnet_id
+        subnet_id=$(openstack --os-cloud $OS_CLOUD subnet show $IRONIC_PROVISION_PROVIDER_SUBNET_NAME -c id -f value 2>/dev/null || true)
+        if [[ -n "$subnet_id" ]]; then
+            openstack --os-cloud $OS_CLOUD router remove subnet $IRONIC_PROVISION_VXLAN_ROUTER_NAME $subnet_id 2>/dev/null || true
+        fi
+        openstack --os-cloud $OS_CLOUD router delete $IRONIC_PROVISION_VXLAN_ROUTER_NAME 2>/dev/null || true
+    fi
 }
 
 function configure_neutron_l3_lower_v6_ra {
@@ -2148,6 +2213,10 @@ function create_ironic_accounts {
 
 # init_ironic() - Initialize databases, etc.
 function init_ironic {
+    # Validate mutually exclusive options
+    if [[ "${IRONIC_USE_NEUTRON_SEGMENTS}" == "True" && "${IRONIC_USE_VXLAN}" == "True" ]]; then
+        die $LINENO "IRONIC_USE_NEUTRON_SEGMENTS and IRONIC_USE_VXLAN are mutually exclusive. Choose one."
+    fi
 
     if [[ "$HOST_TOPOLOGY_ROLE" != "subnode" ]]; then
         # (Re)create  ironic database
@@ -3478,7 +3547,7 @@ function enroll_nodes {
                     llc_port_opt+=" --local-link-connection port_id=$(identify_port_for_switch $IRONIC_NETWORK_SIMULATOR $port_id) "
                 fi
             fi
-            if [[ "${IRONIC_USE_NEUTRON_SEGMENTS}" == "True" ]]; then
+            if [[ "${IRONIC_USE_NEUTRON_SEGMENTS}" == "True" || "${IRONIC_USE_VXLAN}" == "True" ]]; then
                 physical_network=" --physical-network ${PHYSICAL_NETWORK} "
             fi
             if [[ $IRONIC_USE_PORT_GROUP == "True" ]]; then
