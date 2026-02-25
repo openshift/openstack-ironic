@@ -74,10 +74,10 @@ class TraitBasedNetworkingConfigLoaderTestCase(base.TestCase):
 
             with open(tmpfile.name, mode='w') as newfile:
                 contents = ("CUSTOM_TRAIT_NAME_CHANGED:\n"
-                    "  actions:\n"
-                    "    - action: bond_ports\n"
-                    "      filter: port.vendor == 'vendor_string'\n"
-                    "      min_count: 2\n")
+                            "  actions:\n"
+                            "    - action: bond_ports\n"
+                            "      filter: port.vendor == 'vendor_string'\n"
+                            "      min_count: 2\n")
                 newfile.write(contents)
                 newfile.close()
 

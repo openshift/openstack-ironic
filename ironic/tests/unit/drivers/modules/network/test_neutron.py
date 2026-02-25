@@ -953,3 +953,54 @@ class NeutronInterfaceTestCase(db_base.DbTestCase):
 
         self.assertEqual({}, network_data)
         self.assertIn('metadata', self.interface.capabilities)
+
+    @mock.patch.object(neutron.NeutronNetwork, 'configure_tenant_networks',
+                       autospec=True)
+    @mock.patch.object(neutron.NeutronNetwork, 'unconfigure_tenant_networks',
+                       autospec=True)
+    def test_reattach_networking(self, mock_unconfigure, mock_configure):
+        with task_manager.acquire(self.context, self.node.id) as task:
+            self.interface.reattach_networking(task)
+            mock_unconfigure.assert_called_once_with(self.interface, task)
+            mock_configure.assert_called_once_with(self.interface, task)
+
+    @mock.patch.object(neutron.NeutronNetwork, 'configure_tenant_networks',
+                       autospec=True)
+    @mock.patch.object(neutron.NeutronNetwork, 'unconfigure_tenant_networks',
+                       autospec=True)
+    def test_reattach_networking_unconfigure_fails(
+            self, mock_unconfigure, mock_configure):
+        mock_unconfigure.side_effect = exception.NetworkError('test error')
+        with task_manager.acquire(self.context, self.node.id) as task:
+            self.assertRaises(exception.NetworkError,
+                              self.interface.reattach_networking, task)
+            mock_unconfigure.assert_called_once_with(self.interface, task)
+            # configure should not be called if unconfigure fails
+            mock_configure.assert_not_called()
+
+    @mock.patch.object(neutron.NeutronNetwork, 'configure_tenant_networks',
+                       autospec=True)
+    @mock.patch.object(neutron.NeutronNetwork, 'unconfigure_tenant_networks',
+                       autospec=True)
+    def test_reattach_networking_configure_fails(
+            self, mock_unconfigure, mock_configure):
+        mock_configure.side_effect = exception.NetworkError('test error')
+        with task_manager.acquire(self.context, self.node.id) as task:
+            self.assertRaises(exception.NetworkError,
+                              self.interface.reattach_networking, task)
+            mock_unconfigure.assert_called_once_with(self.interface, task)
+            mock_configure.assert_called_once_with(self.interface, task)
+
+    def test_reattach_networking_is_service_step(self):
+        # Verify reattach_networking is registered as a service step
+        with task_manager.acquire(self.context, self.node.id) as task:
+            steps = self.interface.get_service_steps(task)
+            step_names = [s['step'] for s in steps]
+            self.assertIn('reattach_networking', step_names)
+            # Find the reattach_networking step
+            reattach_step = [s for s in steps
+                             if s['step'] == 'reattach_networking'][0]
+            # Verify it doesn't require ramdisk
+            self.assertFalse(reattach_step.get('requires_ramdisk', True))
+            # Verify priority is 0 (manual only)
+            self.assertEqual(0, reattach_step['priority'])

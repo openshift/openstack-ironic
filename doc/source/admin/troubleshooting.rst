@@ -696,6 +696,112 @@ Using that, you can delete the port. Example:
    port's MAC address, which is an incorrect practice as Ironic attempts
    to assert the MAC address based upon the Node.
 
+Reattaching networking on active instances
+==========================================
+
+In advanced networking scenarios, operators may need to reconfigure the
+network binding for an active bare metal instance without rebooting it or
+interrupting the running workload. This is particularly useful for:
+
+- **VXLAN network topology changes**: When the underlying VXLAN network
+  configuration needs to be updated while instances remain online
+- **Network infrastructure changes**: When physical network segments are
+  reconfigured or migrated
+- **Network binding recovery**: When Neutron port bindings become stale or
+  inconsistent with the actual network state
+- **Switch reconfiguration**: When network switches need to update their
+  port configurations without instance downtime
+
+The ``reattach_networking`` service step
+-----------------------------------------
+
+The Neutron network interface provides a ``reattach_networking`` service step
+that can be invoked on nodes in the ``active`` state. This step:
+
+1. Unbinds the tenant network ports in Neutron (clearing binding:host_id
+   and binding:profile)
+2. Rebinds the tenant network ports with updated binding information
+3. Does **not** require booting the ironic-python-agent (IPA) ramdisk
+4. Does **not** remove VIF attachments from the node's ports
+5. Does **not** require rebooting the instance
+
+This allows network switches to reconfigure their ports based on the
+updated Neutron port binding information without any instance downtime.
+
+How to use it
+-------------
+
+To reattach networking on an active node, use the following command:
+
+.. code-block:: console
+
+  $ openstack baremetal node service <node-uuid> \
+      --service-steps '[{"interface": "network", "step": "reattach_networking"}]'
+
+The node will transition to ``servicing`` state, execute the reattach
+operation, and return to ``active`` state. The entire operation typically
+completes in seconds.
+
+Example:
+
+.. code-block:: console
+
+  $ openstack baremetal node service 5e9258c4-cfda-40b6-86e2-e192f523d668 \
+      --service-steps '[{"interface": "network", "step": "reattach_networking"}]'
+
+You can monitor the progress with:
+
+.. code-block:: console
+
+  $ openstack baremetal node show <node-uuid> -f value -c provision_state
+
+When it returns to ``active``, the network reattaching is complete.
+
+.. NOTE::
+   An operator may wish to utilize this feature via a runbook definition.
+
+Important considerations
+-------------------------
+
+- **Only works with the Neutron network interface**: This service step is
+  only available when using ``network_interface=neutron``. It will not
+  appear for ``flat`` or ``noop`` network interfaces.
+
+- **Requires existing VIF attachments**: The node's ports must already have
+  tenant VIF attachments (``tenant_vif_port_id`` in port.internal_info).
+  This service step reattaches existing attachments; it does not create new
+  ones.
+
+- **Smart NIC support**: The step properly handles Smart NIC ports,
+  including waiting for the Smart NIC host agent to be available before
+  reattaching.
+
+- **No network downtime expected**: In most cases, the network reattaching
+  happens quickly enough that active network connections may continue
+  working. However, brief disruption is possible depending on the network
+  switch implementation and configuration.
+
+- **Instance remains running**: The instance operating system and all
+  running processes continue without interruption. No reboot occurs.
+
+When NOT to use this
+---------------------
+
+Do not use ``reattach_networking`` for:
+
+- **Initial VIF attachment**: Use ``openstack baremetal node vif attach``
+  to attach VIFs to a node for the first time.
+
+- **Removing VIFs**: Use ``openstack baremetal node vif detach`` to remove
+  VIF attachments.
+
+- **Nodes not in ACTIVE state**: This service step is designed for active
+  instances. For nodes in other states, use the normal provisioning
+  workflow.
+
+- **Changing VIF assignments**: This step reattaches existing VIFs; it does
+  not change which Neutron ports are attached to which node ports.
+
 My test VM image does not deploy -- mount point does not exist
 ==============================================================
 

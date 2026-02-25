@@ -47,7 +47,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="clover",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
@@ -81,7 +81,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="clover",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.NoMatch(
                     tbn_base.TraitAction(
@@ -119,7 +119,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     vendor="cogwork",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
@@ -151,7 +151,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     physical_network="hypernet",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPortgroup(
                     tbn_base.TraitAction(
@@ -185,7 +185,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     category="red",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.NoMatch(
                     tbn_base.TraitAction(
@@ -223,7 +223,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                     category="red",
                 )
             ],
-            [tbn_base.Network("fake_net_id", "network_name", [])],
+            [tbn_base.Network("fake_net_id", "network_name", frozenset())],
             [
                 tbn_base.AttachPortgroup(
                     tbn_base.TraitAction(
@@ -241,12 +241,13 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
         # TODO(clif): Test min_count and max_count
     )
     @unpack
-    def test_plan_attach_portlike(self,
-            trait_action: tbn_base.TraitAction,
-            node_uuid: str,
-            node_portlikes: list[utils.FauxPortLikeObject],
-            node_networks: list[tbn_base.Network],
-            expected_actions: list[tbn_base.RenderedAction],
+    def test_plan_attach_portlike(
+        self,
+        trait_action: tbn_base.TraitAction,
+        node_uuid: str,
+        node_portlikes: list[utils.FauxPortLikeObject],
+        node_networks: list[tbn_base.Network],
+        expected_actions: list[tbn_base.RenderedAction],
             type_name: str):
         action_funcs = {
             'port': lambda args: tbn_base.AttachPort(*args),
@@ -263,7 +264,8 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
         self.assertEqual(expected_actions, result_actions)
 
     @data(
-        annotate("Attach one port",
+        annotate(
+            "Attach one port",
             tbn_base.NetworkTrait(
                 "CUSTOM_TRAIT",
                 [
@@ -284,7 +286,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
                 )
             ],
             [],
-            [tbn_base.Network("fake_net_id", "fake_net_name", [])],
+            [tbn_base.Network("fake_net_id", "fake_net_name", frozenset())],
             [
                 tbn_base.AttachPort(
                     tbn_base.TraitAction(
@@ -300,7 +302,7 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
         ),
         annotate(("Only one port attach generated for two actions matching"
                   "the same port"),
-            tbn_base.NetworkTrait(
+                 tbn_base.NetworkTrait(
                 "CUSTOM_TRAIT",
                 [
                     tbn_base.TraitAction(
@@ -352,12 +354,12 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
     )
     @unpack
     def test_plan_network(self,
-            network_trait: tbn_base.NetworkTrait,
-            node_uuid: str,
-            node_ports: list[tbn_base.Port],
-            node_portgroups: list[tbn_base.Portgroup],
-            node_networks: list,
-            expected_actions: list[tbn_base.RenderedAction]):
+                          network_trait: tbn_base.NetworkTrait,
+                          node_uuid: str,
+                          node_ports: list[tbn_base.Port],
+                          node_portgroups: list[tbn_base.Portgroup],
+                          node_networks: list,
+                          expected_actions: list[tbn_base.RenderedAction]):
         result_actions = tbn_plan.plan_network(
             network_trait,
             node_uuid,
@@ -368,136 +370,138 @@ class TraitBasedNetworkingPlanningTestCase(base.TestCase):
 
     @data(
         annotate("match a port",
-            [tbn_base.NetworkTrait(
-                "CUSTOM_TRAIT",
-                [
-                    tbn_base.TraitAction(
-                        "CUSTOM_TRAIT",
-                        tbn_base.Actions.ATTACH_PORT,
-                        tbn_base.FilterExpression.parse(
-                            "port.physical_network == 'hypernet'"),
-                    )
-                ]
-            )],
-            utils.FauxTask(
-                utils.FauxNode(instance_info={'traits':['CUSTOM_TRAIT']}),
-                [utils.FauxPortLikeObject(uuid="fake_port_uuid",
-                                          physical_network="hypernet")],
-                []
-            ),
-            {
-                'id': 'fake_net_id',
-            },
-            [tbn_base.AttachPort(
-                tbn_base.TraitAction(
-                    "CUSTOM_TRAIT",
-                    tbn_base.Actions.ATTACH_PORT,
-                    tbn_base.FilterExpression.parse(
-                        "port.physical_network == 'hypernet'"),
-                ),
-                "fake_node_uuid",
-                "fake_port_uuid",
-                "fake_net_id"
-            )],
-        ),
-        annotate("trait order matters",
-            [
-                tbn_base.NetworkTrait(
-                    "CUSTOM_TRAIT_ORDER_SECOND",
-                    [
-                        tbn_base.TraitAction(
-                            "CUSTOM_TRAIT_ORDER_SECOND",
-                            tbn_base.Actions.ATTACH_PORT,
-                            tbn_base.FilterExpression.parse(
-                                "port.physical_network == 'hypernet'"),
-                        )
-                    ],
-                    order=2,
-                ),
-                tbn_base.NetworkTrait(
-                    "CUSTOM_TRAIT_ORDER_FIRST",
-                    [
-                        tbn_base.TraitAction(
-                            "CUSTOM_TRAIT_ORDER_FIRST",
-                            tbn_base.Actions.ATTACH_PORT,
-                            tbn_base.FilterExpression.parse(
-                                "port.physical_network == 'hypernet'"),
-                        )
-                    ],
-                    order=1,
-                ),
-            ],
-            utils.FauxTask(
-                utils.FauxNode(
-                    instance_info={
-                        'traits':['CUSTOM_TRAIT_ORDER_SECOND',
-                                  'CUSTOM_TRAIT_ORDER_FIRST']}),
-                [utils.FauxPortLikeObject(
-                    uuid="fake_port_uuid",
-                    physical_network="hypernet")],
-                []
-            ),
-            {
-                'id': 'fake_net_id',
-            },
-            [
-                tbn_base.AttachPort(tbn_base.TraitAction(
-                     "CUSTOM_TRAIT_ORDER_FIRST",
-                     tbn_base.Actions.ATTACH_PORT,
-                     tbn_base.FilterExpression.parse(
-                         "port.physical_network == 'hypernet'"),
+                 [tbn_base.NetworkTrait(
+                     "CUSTOM_TRAIT",
+                     [
+                         tbn_base.TraitAction(
+                             "CUSTOM_TRAIT",
+                             tbn_base.Actions.ATTACH_PORT,
+                             tbn_base.FilterExpression.parse(
+                                 "port.physical_network == 'hypernet'"),
+                         )
+                     ]
+                 )],
+                 utils.FauxTask(
+                     utils.FauxNode(instance_info={
+                        'traits': ['CUSTOM_TRAIT']
+                     }),
+                     [utils.FauxPortLikeObject(uuid="fake_port_uuid",
+                                               physical_network="hypernet")],
+                     []
+                 ),
+                 {
+                     'id': 'fake_net_id',
+                 },
+                 [tbn_base.AttachPort(
+                     tbn_base.TraitAction(
+                         "CUSTOM_TRAIT",
+                         tbn_base.Actions.ATTACH_PORT,
+                         tbn_base.FilterExpression.parse(
+                             "port.physical_network == 'hypernet'"),
                      ),
-                    "fake_node_uuid",
-                    "fake_port_uuid",
-                    "fake_net_id"
-                )
-            ],
-        ),
+                     "fake_node_uuid",
+                     "fake_port_uuid",
+                     "fake_net_id"
+                 )],
+                 ),
+        annotate("trait order matters",
+                 [
+                     tbn_base.NetworkTrait(
+                         "CUSTOM_TRAIT_ORDER_SECOND",
+                         [
+                             tbn_base.TraitAction(
+                                 "CUSTOM_TRAIT_ORDER_SECOND",
+                                 tbn_base.Actions.ATTACH_PORT,
+                                 tbn_base.FilterExpression.parse(
+                                     "port.physical_network == 'hypernet'"),
+                             )
+                         ],
+                         order=2,
+                     ),
+                     tbn_base.NetworkTrait(
+                         "CUSTOM_TRAIT_ORDER_FIRST",
+                         [
+                             tbn_base.TraitAction(
+                                 "CUSTOM_TRAIT_ORDER_FIRST",
+                                 tbn_base.Actions.ATTACH_PORT,
+                                 tbn_base.FilterExpression.parse(
+                                     "port.physical_network == 'hypernet'"),
+                             )
+                         ],
+                         order=1,
+                     ),
+                 ],
+                 utils.FauxTask(
+                     utils.FauxNode(
+                         instance_info={
+                             'traits': ['CUSTOM_TRAIT_ORDER_SECOND',
+                                        'CUSTOM_TRAIT_ORDER_FIRST']}),
+                     [utils.FauxPortLikeObject(
+                         uuid="fake_port_uuid",
+                         physical_network="hypernet")],
+                     []
+                 ),
+                 {
+                     'id': 'fake_net_id',
+                 },
+                 [
+                     tbn_base.AttachPort(tbn_base.TraitAction(
+                         "CUSTOM_TRAIT_ORDER_FIRST",
+                         tbn_base.Actions.ATTACH_PORT,
+                         tbn_base.FilterExpression.parse(
+                             "port.physical_network == 'hypernet'"),
+                     ),
+                         "fake_node_uuid",
+                         "fake_port_uuid",
+                         "fake_net_id"
+                     )
+                 ],
+                 ),
         annotate("already attached port not considered",
-            [
-                tbn_base.NetworkTrait(
-                    "CUSTOM_TRAIT",
-                    [
-                        tbn_base.TraitAction(
-                            "CUSTOM_TRAIT",
-                            tbn_base.Actions.ATTACH_PORT,
-                            tbn_base.FilterExpression.parse(
-                                "port.physical_network == 'hypernet'"),
-                        )
-                    ]
-                ),
-            ],
-            utils.FauxTask(
-                utils.FauxNode(
-                    instance_info={'traits':['CUSTOM_TRAIT']}),
-                [utils.FauxPortLikeObject(
-                    uuid="fake_port_uuid",
-                    physical_network="hypernet",
-                    internal_info={utils.TENANT_VIF_KEY: 'some_vif_id'})],
-                []
-            ),
-            {
-                'id': 'fake_net_id',
-            },
-            [
-                tbn_base.NoMatch(tbn_base.TraitAction(
-                    'plan_vif_attach',
-                    tbn_base.Actions.ATTACH_PORT,
-                    tbn_base.FilterExpression.parse(
-                        "port.category == 'plan_vif_attach'")),
-                     'fake_node_uuid',
-                     ("Could not find an applicable port or portgroup to "
-                     "attach to network 'fake_net_id' in any applicable "
-                     "trait."))
-             ],
-        ),
+                 [
+                     tbn_base.NetworkTrait(
+                         "CUSTOM_TRAIT",
+                         [
+                             tbn_base.TraitAction(
+                                 "CUSTOM_TRAIT",
+                                 tbn_base.Actions.ATTACH_PORT,
+                                 tbn_base.FilterExpression.parse(
+                                     "port.physical_network == 'hypernet'"),
+                             )
+                         ]
+                     ),
+                 ],
+                 utils.FauxTask(
+                     utils.FauxNode(
+                         instance_info={'traits': ['CUSTOM_TRAIT']}),
+                     [utils.FauxPortLikeObject(
+                         uuid="fake_port_uuid",
+                         physical_network="hypernet",
+                         internal_info={utils.TENANT_VIF_KEY: 'some_vif_id'})],
+                     []
+                 ),
+                 {
+                     'id': 'fake_net_id',
+                 },
+                 [
+                     tbn_base.NoMatch(tbn_base.TraitAction(
+                         'plan_vif_attach',
+                         tbn_base.Actions.ATTACH_PORT,
+                         tbn_base.FilterExpression.parse(
+                             "port.category == 'plan_vif_attach'")),
+                         'fake_node_uuid',
+                         ("Could not find an applicable port or portgroup to "
+                          "attach to network 'fake_net_id' in any applicable "
+                          "trait."))
+                 ],
+                 ),
     )
     @unpack
     def test_plan_vif_attach(self,
-        traits: list[tbn_base.NetworkTrait],
-        task: utils.FauxTask,
-        vif_info: dict,
-        expected_actions: list[tbn_base.RenderedAction]):
+                             traits: list[tbn_base.NetworkTrait],
+                             task: utils.FauxTask,
+                             vif_info: dict,
+                             expected_actions: list[tbn_base.RenderedAction]):
         result_actions = tbn_plan.plan_vif_attach(traits, task, vif_info)
         self.assertEqual(expected_actions, result_actions)
 

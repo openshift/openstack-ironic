@@ -730,11 +730,11 @@ opts = [
             'this file if it detects the file has changed.'
         )),
     cfg.BoolOpt('trait_based_networking_raise_when_no_match',
-        default=True,
-        help=_(
-            'If True: TBN will raise an exception when no traits '
-            '(and actions) apply to a node when planning its network.'
-        )),
+                default=True,
+                help=_(
+                    'If True: TBN will raise an exception when no traits '
+                    '(and actions) apply to a node when planning its network.'
+                )),
     cfg.BoolOpt(
         'trait_based_networking_enable_default_trait',
         default=True,

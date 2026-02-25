@@ -35,7 +35,7 @@ class FauxPortLikeObject(object):
 class FauxNetwork(object):
     network_id: str = "fake_net_id"
     name: str = "test_network"
-    tags: list[str] = field(default_factory=list)
+    tags: frozenset[str] = field(default_factory=frozenset)
 
 def default_faux_instance_info(traits=None):
     return {

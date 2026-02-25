@@ -44,10 +44,10 @@ class GenericSwitchDriverTestCase(base.TestCase):
         self.addCleanup(mock.patch.stopall)
 
     def _create_switch_mock(self, device_name='test_switch',
-                           device_type='cisco_ios',
-                           ip='192.168.1.1',
-                           support_trunk=True,
-                           allowed_vlans=None):
+                            device_type='cisco_ios',
+                            ip='192.168.1.1',
+                            support_trunk=True,
+                            allowed_vlans=None):
         """Create a mock switch device with standard attributes."""
         switch = mock.Mock()
         switch.device_name = device_name

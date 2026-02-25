@@ -40,8 +40,9 @@ def get_built_in_rules(rules_file):
 
         if not isinstance(rules_data, list):
             msg = (
-                _("Built-in rules file (%s) should contain a list of rules") %
-                  rules_file)
+                _("Built-in rules file (%s) should contain a list of rules")
+                % rules_file
+            )
             LOG.error(msg)
             raise exception.IronicException(msg)
 

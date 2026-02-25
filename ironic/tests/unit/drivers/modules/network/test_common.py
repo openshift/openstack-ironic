@@ -815,7 +815,7 @@ class TestNeutronVifPortIDMixin(db_base.DbTestCase):
             address='52:54:00:cf:2d:32',
             internal_info={
                 common.NetType.TENANT.vif_key: uuidutils.generate_uuid()},
-                extra={'client-id': 'fake1'})
+            extra={'client-id': 'fake1'})
         self.neutron_port = {'id': '132f871f-eaec-4fed-9475-0d54465e0f00',
                              'mac_address': '52:54:00:cf:2d:32'}
 

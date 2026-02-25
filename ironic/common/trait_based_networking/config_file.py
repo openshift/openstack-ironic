@@ -55,12 +55,12 @@ class ConfigFile(object):
                 valid = False
                 reasons.append(
                     _(f"'{trait_name}' trait does not include an 'actions' "
-                       "key "))
+                      "key "))
                 continue
             if not isinstance(trait_members['actions'], list):
                 reasons.append(
                     _(f"'{trait_name}.actions' does not consist of a list of "
-                       "actions"))
+                      "actions"))
                 valid = False
                 continue
             for trait_action in trait_members['actions']:

@@ -1053,12 +1053,157 @@ class FileImageService(BaseImageService):
         }
 
 
+class NfsImageService(BaseImageService):
+    """Provides retrieval of disk images using NFS."""
+
+    def validate_href(self, image_href, secret=False):
+        """Validate NFS image reference.
+
+        :param image_href: Image reference.
+        :param secret: Specify if image_href being validated should not be
+            shown in exception message.
+        :raises: exception.ImageRefValidationFailed if NFS URL is malformed.
+        :returns: None
+        """
+        output_url = 'secreturl' if secret else image_href
+
+        try:
+            parsed = urlparse.urlparse(image_href)
+        except Exception:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('Invalid NFS URL format'))
+
+        if parsed.scheme.lower() != 'nfs':
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('URL scheme must be "nfs"'))
+
+        if not parsed.netloc:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('NFS URL must include host'))
+
+        if not parsed.path:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('NFS URL must include path'))
+
+        LOG.debug("Validated NFS URL: %s", output_url)
+
+    def download(self, image_href, image_file):
+        """Download an image from NFS.
+
+        :param image_href: NFS URL of the image.
+        :param image_file: File object to write the image to.
+        :raises: exception.ImageRefValidationFailed if NFS URL is invalid.
+        :raises: NotImplementedError as the conductor does not download NFS
+            files. The conductor builds ISO images locally, copies them to the
+            mounted NFS share, and the BMC accesses files directly via NFS.
+        """
+        self.validate_href(image_href)
+        raise NotImplementedError(
+            _("NFS files are accessed directly by the BMC, not downloaded by "
+              "the conductor."))
+
+    def show(self, image_href):
+        """Get image metadata from NFS URL.
+
+        :param image_href: NFS URL of the image.
+        :raises: exception.ImageRefValidationFailed if NFS URL is invalid.
+        :returns: Dictionary with image metadata.
+        """
+        self.validate_href(image_href)
+
+        # For NFS URLs, return minimal metadata since we can't access
+        # the file directly from the conductor
+        return {
+            'id': image_href,
+            'name': image_href,
+            'properties': {},
+        }
+
+
+class CifsImageService(BaseImageService):
+    """Provides validation of CIFS/SMB image URLs."""
+
+    def validate_href(self, image_href, secret=False):
+        """Validate CIFS image reference.
+
+        :param image_href: Image reference.
+        :param secret: Specify if image_href being validated should not be
+            shown in exception message.
+        :raises: exception.ImageRefValidationFailed if CIFS URL is malformed.
+        :returns: None
+        """
+        output_url = 'secreturl' if secret else image_href
+
+        try:
+            parsed = urlparse.urlparse(image_href)
+        except Exception:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('Invalid CIFS URL format'))
+
+        if parsed.scheme.lower() not in ('cifs', 'smb'):
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('URL scheme must be "cifs" or "smb"'))
+
+        if not parsed.netloc:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('CIFS URL must include host'))
+
+        if not parsed.path:
+            raise exception.ImageRefValidationFailed(
+                image_href=image_href,
+                reason=_('CIFS URL must include path'))
+
+        LOG.debug("Validated CIFS URL: %s", output_url)
+
+    def download(self, image_href, image_file):
+        """Download an image from CIFS.
+
+        :param image_href: CIFS URL of the image.
+        :param image_file: File object to write the image to.
+        :raises: exception.ImageRefValidationFailed if CIFS URL is invalid.
+        :raises: NotImplementedError as the conductor does not download CIFS
+            files. The conductor builds ISO images locally, copies them to the
+            mounted CIFS share, and the BMC accesses files directly via CIFS.
+        """
+        self.validate_href(image_href)
+        raise NotImplementedError(
+            _("CIFS files are accessed directly by the BMC, not downloaded by "
+              "the conductor."))
+
+    def show(self, image_href):
+        """Get image metadata from CIFS URL.
+
+        :param image_href: CIFS URL of the image.
+        :raises: exception.ImageRefValidationFailed if CIFS URL is invalid.
+        :returns: Dictionary with image metadata.
+        """
+        self.validate_href(image_href)
+
+        # For CIFS URLs, return minimal metadata since we can't access
+        # the file directly from the conductor
+        return {
+            'id': image_href,
+            'name': image_href,
+            'properties': {},
+        }
+
+
 protocol_mapping = {
     'http': HttpImageService,
     'https': HttpImageService,
     'file': FileImageService,
     'glance': GlanceImageService,
     'oci': OciImageService,
+    'nfs': NfsImageService,
+    'cifs': CifsImageService,
+    'smb': CifsImageService,
 }
 
 

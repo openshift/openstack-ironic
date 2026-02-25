@@ -16,6 +16,7 @@
 
 import os
 import re
+from urllib import parse as urlparse
 
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -1211,14 +1212,23 @@ def _validate_image_url(node, url, secret=False, inspect_image=None,
             oci.set_image_auth(url, image_auth)
             oci.validate_href(url, secret)
         else:
-            resp = image_service.HttpImageService().validate_href(url, secret)
-            if resp and resp.url != url:
-                LOG.debug('URL %s redirected to %s', url, resp.url)
-                image_info['image_source'] = resp.url
+            # Check scheme first to use the appropriate validator.
+            # NFS and CIFS URLs cannot be validated by HttpImageService.
+            scheme = urlparse.urlparse(url).scheme.lower()
+            if scheme == 'nfs':
+                image_service.NfsImageService().validate_href(url, secret)
+            elif scheme in ('cifs', 'smb'):
+                image_service.CifsImageService().validate_href(url, secret)
+            else:
+                resp = image_service.HttpImageService().validate_href(
+                    url, secret)
+                if resp and resp.url != url:
+                    LOG.debug('URL %s redirected to %s', url, resp.url)
+                    image_info['image_source'] = resp.url
     except exception.ImageRefValidationFailed as e:
         with excutils.save_and_reraise_exception():
-            LOG.error("The specified URL is not a valid HTTP(S) URL or is "
-                      "not reachable for node %(node)s: %(msg)s",
+            LOG.error("The specified URL is not a valid HTTP(S)/NFS/CIFS URL "
+                      "or is not reachable for node %(node)s: %(msg)s",
                       {'node': node.uuid, 'msg': e})
     if inspect:
         LOG.info("Inspecting image contents for %(node)s with url %(url)s. "

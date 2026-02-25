@@ -659,7 +659,7 @@ class TwoPhaseDriverInitializationTestCase(base.TestCase):
     @mock.patch.object(named.NamedExtensionManager, 'names',
                        return_value=[], autospec=True)
     def test_get_driver_classes_before_initialization(self, mock_names,
-                                                       mock_init):
+                                                      mock_init):
         """Test get_driver_classes returns plugin classes."""
         # Create mock extensions
         mock_ext1 = mock.Mock()
@@ -684,7 +684,7 @@ class TwoPhaseDriverInitializationTestCase(base.TestCase):
     @mock.patch.object(named.NamedExtensionManager, 'names',
                        return_value=[], autospec=True)
     def test_get_driver_before_initialization_raises_error(self, mock_names,
-                                                            mock_init):
+                                                           mock_init):
         """Test that get_driver raises error when drivers not initialized."""
         factory = self.test_factory_class()
 
@@ -833,7 +833,7 @@ class TwoPhaseDriverInitializationTestCase(base.TestCase):
     @mock.patch.object(named.NamedExtensionManager, 'names',
                        return_value=[], autospec=True)
     def test_get_driver_classes_after_initialization(self, mock_names,
-                                                      mock_init):
+                                                     mock_init):
         """Test get_driver_classes returns classes after initialization."""
         # Create fresh test class for this test
         test_class = type(
