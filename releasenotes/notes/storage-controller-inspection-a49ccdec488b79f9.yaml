@@ -1,0 +1,20 @@
+---
+features:
+  - |
+    The Redfish out-of-band inspection now collects storage controller and
+    drive information from the Redfish Storage resources. For each storage
+    resource, the following data is collected:
+
+    * **Storage resource**: ``id`` and ``name`` from the top-level Storage
+      resource.
+    * **Sub-controllers** (from the deprecated ``StorageControllers``
+      list): ``member_id``, ``name``, ``raid_types``, ``speed_gbps``,
+      ``controller_protocols``, ``device_protocols``, and ``status``.
+    * **Drives**: ``name``, ``size`` (capacity in bytes), ``id``,
+      ``media_type``, ``protocol``, ``serial_number``, ``manufacturer``,
+      ``model``, ``revision``, and ``status``.
+
+    This information is stored in the ``inventory['storage_controllers']``
+    field of the inspection data and can be used by inspection rules to
+    configure RAID or make scheduling decisions based on available storage
+    hardware.
