@@ -17,12 +17,14 @@
 import keystonemiddleware.audit as audit_middleware
 from keystonemiddleware import auth_token
 from oslo_config import cfg
+from oslo_log import log as logging
 import oslo_middleware.cors as cors_middleware
 from oslo_middleware import healthcheck
 from oslo_middleware import http_proxy_to_wsgi
 from oslo_middleware import request_id
 import osprofiler.web as osprofiler_web
 import pecan
+import stevedore
 
 from ironic.api import config
 from ironic.api.controllers import base
@@ -33,7 +35,11 @@ from ironic.api.middleware import json_ext
 from ironic.api.middleware import request_log
 from ironic.common import auth_basic
 from ironic.common import exception
+from ironic.common.i18n import _
 from ironic.conf import CONF
+
+
+LOG = logging.getLogger(__name__)
 
 
 HTTP_RESP_HEADER_REQUEST_ID = 'openstack-request-id'
@@ -158,6 +164,39 @@ def setup_app(pecan_config=None, extra_hooks=None):
     # Add request logging middleware
     app = request_log.RequestLogMiddleware(app)
 
+    # Load custom middleware via entry points
+    # Middleware are loaded in the order specified in [api] middleware config
+    # and wrap the application from inside out (last in config = outermost)
+    if CONF.api.middleware:
+        app = _load_custom_middleware(app, CONF.api.middleware)
+
+    return app
+
+
+def _missing_middleware_callback(names):
+    """Raise RuntimeError with list of missing middleware."""
+    error = _('The following middleware failed to load: %s')
+    raise RuntimeError(error % ', '.join(names))
+
+
+def _load_custom_middleware(app, middleware_names):
+    """Load custom WSGI middleware via stevedore entry points.
+
+    :param app: The WSGI application to wrap
+    :param middleware_names: List of middleware names to load
+    :returns: The wrapped WSGI application
+    """
+    LOG.info('Loading custom API middleware: %s', middleware_names)
+    mgr = stevedore.NamedExtensionManager(
+        'ironic.api.middleware',
+        names=middleware_names,
+        invoke_on_load=False,
+        on_missing_entrypoints_callback=_missing_middleware_callback,
+        name_order=True,
+    )
+    for ext in mgr:
+        LOG.info('Applying middleware: %s (%s)', ext.name, ext.plugin)
+        app = ext.plugin(app)
     return app
 
 
