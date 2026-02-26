@@ -193,3 +193,6 @@ class AutomatedStepsDirective(rst.Directive):
 def setup(app):
     app.add_directive('show-steps', AutomatedStepsDirective)
     _init_steps_by_driver()
+    return {
+        'parallel_read_safe': True,
+    }
