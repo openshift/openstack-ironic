@@ -91,6 +91,11 @@ fi
 # Ping timeout after the node becomes active
 IRONIC_PING_TIMEOUT=${IRONIC_PING_TIMEOUT:-}
 
+# Configdrive Swift temporary URL duration, which must be
+# longer than the deploy timeout. Otherwise you get 401 errors when trying
+# access the download.
+IRONIC_CONFIGDRIVE_SWIFT_TEMP_URL_DURATION=${IRONIC_CONFIGDRIVE_SWIFT_TEMP_URL_DURATION:-1800}
+
 # Whether to allow devstack to continue when ironic-status upgrade check
 # finds unsupported drivers. Set to "true" to continue despite the error.
 IRONIC_ALLOW_UNSUPPORTED_DRIVERS=$(trueorfalse False IRONIC_ALLOW_UNSUPPORTED_DRIVERS)
@@ -2049,6 +2054,7 @@ function configure_ironic_conductor {
     if [[ -n "$IRONIC_CALLBACK_TIMEOUT" ]]; then
         iniset $IRONIC_CONF_FILE conductor deploy_callback_timeout $IRONIC_CALLBACK_TIMEOUT
     fi
+    iniset $IRONIC_CONF_FILE conductor configdrive_swift_temp_url_duration $IRONIC_CONFIGDRIVE_SWIFT_TEMP_URL_DURATION
     if [[ "$IRONIC_IP_VERSION" == "6" ]]; then
         iniset $IRONIC_CONF_FILE pxe tftp_server $IRONIC_HOST_IPV6
     else
