@@ -1237,7 +1237,9 @@ class StoreConfigDriveTestCase(db_base.DbTestCase):
         container_name = 'foo_container'
         timeout = 123
         expected_obj_name = 'configdrive-%s' % self.node.uuid
-        expected_obj_header = {'X-Delete-After': str(timeout)}
+        # Timeout should include the 120 second buffer
+        expected_timeout = timeout + 120
+        expected_obj_header = {'X-Delete-After': str(expected_timeout)}
         expected_instance_info = {'configdrive': 'http://1.2.3.4'}
 
         # set configs and mocks
@@ -1256,7 +1258,7 @@ class StoreConfigDriveTestCase(db_base.DbTestCase):
             container_name, expected_obj_name, mock.ANY,
             object_headers=expected_obj_header)
         mock_swift.return_value.get_temp_url.assert_called_once_with(
-            container_name, expected_obj_name, timeout)
+            container_name, expected_obj_name, expected_timeout)
         self.node.refresh()
         self.assertEqual(expected_instance_info, self.node.instance_info)
 
@@ -1267,7 +1269,9 @@ class StoreConfigDriveTestCase(db_base.DbTestCase):
         container_name = 'foo_container'
         timeout = 123
         expected_obj_name = 'configdrive-%s' % self.node.uuid
-        expected_obj_header = {'X-Delete-After': str(timeout)}
+        # Timeout should include the 120 second buffer
+        expected_timeout = timeout + 120
+        expected_obj_header = {'X-Delete-After': str(expected_timeout)}
         expected_instance_info = {'configdrive': 'http://1.2.3.4'}
 
         mock_cd.return_value = 'fake_configdrive_content'
@@ -1288,7 +1292,7 @@ class StoreConfigDriveTestCase(db_base.DbTestCase):
             container_name, expected_obj_name, mock.ANY,
             object_headers=expected_obj_header)
         mock_swift.return_value.get_temp_url.assert_called_once_with(
-            container_name, expected_obj_name, timeout)
+            container_name, expected_obj_name, expected_timeout)
         self.node.refresh()
         self.assertEqual(expected_instance_info, self.node.instance_info)
         mock_cd.assert_called_once_with(self.node, {'meta_data': {}})
