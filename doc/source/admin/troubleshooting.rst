@@ -1629,3 +1629,22 @@ to be presented to the bare metal node being booted.
 If you're using the ``external`` interface option, you will need to manually
 reset you're volume connector information values. Please refer to
 :doc:`/admin/boot-from-volume` for more information.
+
+My configdrive download from tempurl fails with a 401 error!
+============================================================
+
+This can happen because initial first sequence of deployment is close to the
+:oslo.config:option:`conductor.deploy_callback_timeout` is set to a value,
+and :oslo.config:option:`conductor.configdrive_swift_temp_url_duration` is
+not set to a value.
+
+What is happening is the deployment process is running, but running to close
+to when the ``deploy_callback_timeout`` would have normally aborted the
+deployment, but it just got started deploying and thus would not be aborted.
+
+Yet that timeout is the setting leverage when no other setting is set, and
+the result is that the configdrive temporary url download is rejected just
+after the temporary url timed out. Newer versions of ironic automatically
+add a slightly larger buffer to that window to try and prevent this issue
+from arising under normal conditions, however ideally you should set an
+explicit temporary url duration in your configuration.

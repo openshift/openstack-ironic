@@ -22,6 +22,8 @@ class ConfigFile(object):
 
     Basic flow for use goes like:
 
+    .. code-block:: python
+
         cf = ConfigFile("some_tbn_config.yaml") # File is read().
         valid, reasons = cf.validate()
         if not valid:
@@ -45,8 +47,9 @@ class ConfigFile(object):
         """Check that contents conform to TBN expectations.
 
         :returns: (valid, reasons): valid is a boolean representing if the
-        contents passed validation or not, and reasons is a list of strings
-        describing why the contents failed validation if they are not valid.
+            contents passed validation or not, and reasons is a list of
+            strings describing why the contents failed validation if they are
+            not valid.
         """
         reasons = []
         valid = True
@@ -107,7 +110,7 @@ class ConfigFile(object):
     def parse(self):
         """Render contents of configuration file as TBN objects
 
-        The result of this method can later be retrieved by calling traits()
+        The result of this method can later be retrieved by calling traits().
         """
         self._traits = []
         for trait_name, trait_members in self._contents.items():

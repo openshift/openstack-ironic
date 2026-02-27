@@ -14,6 +14,12 @@
 import os
 import sys
 
+from oslo_service import backend
+
+# NOTE(Clif): Without this import errors related to oslo_service already
+# stuck with the wrong BackendType plague doc builds.
+backend.init_backend(backend.BackendType.THREADING)
+
 # -- General configuration ----------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,

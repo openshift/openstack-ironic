@@ -146,13 +146,16 @@ def parse_inverted_operator(op):
     exclamation mark is allowed.
 
     Example Usage:
+
+    .. code-block:: python
+
         parse_inverted_operator("!eq")   # Returns ("eq", True)
         parse_inverted_operator(" eq ")  # Returns ("eq", False)
         parse_inverted_operator("!!eq")  # Raises ValueError
 
-    raises: ValueError: If multiple exclamation marks are present
-    returns: A tuple containing the cleaned operator and a
-            boolean indicating whether negation was applied.
+    :raises: ValueError: If multiple exclamation marks are present.
+    :returns: A tuple containing the cleaned operator and a
+        boolean indicating whether negation was applied.
     """
     op = op.strip()
 

@@ -781,7 +781,6 @@ class RedfishManagement(base.ManagementInterface):
         # We are leveraging $expand the as much as possible
         # So if you need to make additional call, first check
         # if calling with expand already has your data.
-        method_start = time.time()
         node = task.node
         sensors = collections.defaultdict(dict)
 
@@ -811,11 +810,8 @@ class RedfishManagement(base.ManagementInterface):
             drive_data = self._process_simple_storage_sensors(
                 node, system)
             simple_storage_available = True
-            LOG.debug("Using SimpleStorage for drive sensors on %s",
-                      node.uuid)
         except sushy.exceptions.MissingAttributeError:
-            LOG.debug("SimpleStorage not available for node %s",
-                      node.uuid)
+            pass
 
         # Fall back to Storage only if SimpleStorage is not available
         if not simple_storage_available:
@@ -823,17 +819,10 @@ class RedfishManagement(base.ManagementInterface):
                 # Storage requires following drive links (1+M calls)
                 drive_data = self._process_storage_sensors(
                     node, system)
-                LOG.debug("Falling back to Storage for drive "
-                          "sensors on %s (less efficient than "
-                          "SimpleStorage)", node.uuid)
             except sushy.exceptions.MissingAttributeError:
                 LOG.debug("Storage not available for node %s", node.uuid)
 
         sensors['Drive'].update(drive_data.get('Drive', {}))
-
-        total = time.time() - method_start
-        LOG.debug("Gathered sensor data for node %s in %.2f seconds: %s",
-                  node.uuid, total, sensors)
 
         return sensors
 
@@ -848,7 +837,6 @@ class RedfishManagement(base.ManagementInterface):
         :returns: Dictionary with Fan, Temperature, and Power sensor data
         """
 
-        start_time = time.time()
         sensors = {'Fan': {}, 'Temperature': {}, 'Power': {}}
 
         try:
@@ -886,13 +874,6 @@ class RedfishManagement(base.ManagementInterface):
                           "%(node)s: %(error)s", {'node': node.uuid,
                                                   'error': exc})
 
-            # Log
-            total_chassis_sensors = sum(len(data) for data in sensors.values())
-            chassis_time = time.time() - start_time
-            LOG.debug("Chassis processing completed for node %s: %d sensors "
-                      "in %.2f seconds",
-                      node.uuid, total_chassis_sensors, chassis_time)
-
         except Exception as exc:
             LOG.debug("Failed reading expanded chassis information for "
                       "node %(node)s: %(error)s",
@@ -911,7 +892,6 @@ class RedfishManagement(base.ManagementInterface):
         :param system: Redfish System object
         :returns: Dictionary with Drive sensor data
         """
-        start_time = time.time()
         storage_sensors = {'Drive': {}}
 
         # Get system identity from driver info
@@ -941,13 +921,6 @@ class RedfishManagement(base.ManagementInterface):
 
             storage_sensors['Drive'].update(drives)
 
-            # Log
-            total_storage_sensors = len(storage_sensors['Drive'])
-            storage_time = time.time() - start_time
-            LOG.debug("Storage processing completed for node %s: %d sensors "
-                      "in %.2f seconds",
-                      node.uuid, total_storage_sensors, storage_time)
-
         except sushy.exceptions.SushyError as exc:
             LOG.debug("Failed reading drive information for node "
                       "%(node)s: %(error)s", {'node': node.uuid,
@@ -965,7 +938,6 @@ class RedfishManagement(base.ManagementInterface):
         :param system: Redfish System object
         :returns: Dictionary with Drive sensor data
         """
-        start_time = time.time()
         simple_storage_sensors = {'Drive': {}}
 
         # Get system identity from driver info
@@ -989,8 +961,6 @@ class RedfishManagement(base.ManagementInterface):
                         # label inconsistency errors since they lack fields
                         # like capacity_bytes that actual drives have.
                         if not device.capacity_bytes:
-                            LOG.debug("Skipping device %s with no capacity "
-                                      "for node %s", device.name, node.uuid)
                             continue
 
                         unique_name, sensor = self._get_sensor_drive(
@@ -1004,14 +974,6 @@ class RedfishManagement(base.ManagementInterface):
                     continue
 
             simple_storage_sensors['Drive'].update(drives)
-
-            # Log
-            total_simple_storage_sensors = len(simple_storage_sensors['Drive'])
-            simple_storage_time = time.time() - start_time
-            LOG.debug("SimpleStorage processing completed for node %s: "
-                      "%d sensors in %.2f seconds",
-                      node.uuid, total_simple_storage_sensors,
-                      simple_storage_time)
 
         except sushy.exceptions.MissingAttributeError:
             # Re-raise MissingAttributeError so caller can fall back to Storage

@@ -25,10 +25,10 @@ from ironic.conf import CONF
 
 
 def novnc_authorize(node):
-    """Create and save a console token
+    """Create and save a console token.
 
     A random token is created and is stored in the node
-    ``driver_internal_info` along with creation time.
+    ``driver_internal_info`` along with creation time.
 
     This is called by graphical console drivers when ``start_console`` is
     called.
