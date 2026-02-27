@@ -153,7 +153,9 @@ class SingleExpression(object):
 
     A single expression consists of a variable name, a comparator, and a
     string literal. For example:
+
         port.vendor == "purple"
+
     In this example, When eval()ed against a port whose vendor is "purple"
     this expression will return True. Otherwise the expression will return
     False.

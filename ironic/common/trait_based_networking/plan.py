@@ -51,7 +51,7 @@ def plan_network(
     :param node_networks: A list of networks available to this node.
 
     :returns: A list of RenderedActions which should be executed by the
-    appropriate network driver.
+        appropriate network driver.
     """
     rendered_actions = []
 
@@ -171,7 +171,7 @@ def plan_vif_attach(traits: list[base.NetworkTrait],
         use to plan actions.
 
     :returns: A list of RenderedActions which should be executed by the
-    appropriate network driver.
+        appropriate network driver.
     """
     # TODO(clif): Take cues from get_free_port_like_object where appropriate.
     net = base.Network.from_vif_info(vif_info)

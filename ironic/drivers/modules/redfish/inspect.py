@@ -142,6 +142,10 @@ class RedfishInspect(base.InspectInterface):
 
             inventory['disks'] = disks
 
+        storage_controllers = self._get_storage_controllers(task, system)
+        if storage_controllers:
+            inventory['storage_controllers'] = storage_controllers
+
         inventory['interfaces'] = self._get_interface_info(task, system)
 
         pcie_devices = self._get_pcie_devices(system.pcie_devices)
@@ -355,6 +359,136 @@ class RedfishInspect(base.InspectInterface):
             processor.instruction_set) or ''
 
         return cpu
+
+    def _get_storage_controllers(self, task, system):
+        """Extract storage controller and drive information.
+
+        Collects storage information from all Redfish Storage resources
+        including their sub-controllers and drives.
+
+        :param task: a TaskManager instance.
+        :param system: Sushy system object.
+        :returns: List of storage controller dictionaries.
+        """
+        controllers = []
+
+        if not system.storage:
+            return controllers
+
+        try:
+            members = system.storage.get_members()
+        except sushy.exceptions.SushyError as ex:
+            LOG.debug('Failed to get storage members for node %(node)s: '
+                      '%(error)s', {'node': task.node.uuid, 'error': ex})
+            return controllers
+
+        for storage in members:
+            controller = self._parse_storage_controller(task, storage)
+            controllers.append(controller)
+
+        return controllers
+
+    @staticmethod
+    def _enum_to_str(value):
+        """Convert an enum value to string, or return as-is."""
+        return value.value if hasattr(value, 'value') else value
+
+    @staticmethod
+    def _status_to_dict(status):
+        """Convert a Sushy StatusField to a serializable dict."""
+        if not status:
+            return None
+        result = {}
+        if hasattr(status, 'health') and status.health is not None:
+            result['health'] = RedfishInspect._enum_to_str(status.health)
+        if hasattr(status, 'state') and status.state is not None:
+            result['state'] = RedfishInspect._enum_to_str(status.state)
+        if (hasattr(status, 'health_rollup')
+                and status.health_rollup is not None):
+            result['health_rollup'] = RedfishInspect._enum_to_str(
+                status.health_rollup)
+        return result or None
+
+    def _parse_storage_controller(self, task, storage):
+        """Parse a single storage resource.
+
+        :param task: a TaskManager instance.
+        :param storage: Sushy Storage object.
+        :returns: Dictionary with storage controller info.
+        """
+        controller = {
+            'id': str(storage.identity) if storage.identity else '',
+            'name': storage.name if hasattr(storage, 'name') else None,
+        }
+
+        # Collect sub-controllers from deprecated StorageControllers list
+        sub_controllers = []
+        try:
+            sc_list = storage.storage_controllers or []
+        except (sushy.exceptions.SushyError, TypeError):
+            sc_list = []
+        for sc in sc_list:
+            try:
+                sc_info = {
+                    'member_id': getattr(sc, 'member_id', None),
+                    'name': getattr(sc, 'name', None),
+                    'raid_types': [
+                        rt.value for rt in
+                        (getattr(sc, 'raid_types', None) or [])],
+                    'speed_gbps': getattr(sc, 'speed_gbps', None),
+                    'controller_protocols': [
+                        p.value for p in
+                        (getattr(sc, 'controller_protocols', None)
+                         or [])],
+                    'device_protocols': [
+                        p.value for p in
+                        (getattr(sc, 'device_protocols', None)
+                         or [])],
+                }
+                status = getattr(sc, 'status', None)
+                if status:
+                    sc_info['status'] = self._status_to_dict(status)
+                sub_controllers.append(sc_info)
+            except (AttributeError, TypeError,
+                    sushy.exceptions.SushyError):
+                LOG.debug('Failed to parse sub-controller on node '
+                          '%(node)s', {'node': task.node.uuid})
+        controller['storage_controllers'] = sub_controllers
+
+        # Collect drives
+        drives = []
+        if hasattr(storage, 'drives'):
+            for drive in storage.drives:
+                try:
+                    drive_info = {
+                        'name': drive.name,
+                        'size': drive.capacity_bytes,
+                        'id': getattr(drive, 'identity', None),
+                        'media_type': getattr(drive, 'media_type',
+                                              None),
+                        'serial_number': getattr(drive, 'serial_number',
+                                                 None),
+                        'manufacturer': getattr(drive, 'manufacturer',
+                                                None),
+                        'model': getattr(drive, 'model', None),
+                        'revision': getattr(drive, 'revision', None),
+                    }
+                    protocol = getattr(drive, 'protocol', None)
+                    if protocol:
+                        drive_info['protocol'] = self._enum_to_str(
+                            protocol)
+                    status = getattr(drive, 'status', None)
+                    if status:
+                        drive_info['status'] = self._status_to_dict(
+                            status)
+                    drives.append(drive_info)
+                except (AttributeError, TypeError,
+                        sushy.exceptions.SushyError):
+                    LOG.debug('Failed to parse drive on node %(node)s',
+                              {'node': task.node.uuid})
+        controller['drives'] = drives
+
+        return controller
 
     def _get_pcie_devices(self, pcie_devices_collection):
         """Extract PCIe device information from Redfish collection.

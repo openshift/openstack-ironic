@@ -81,9 +81,20 @@ class RedfishInspectTestCase(db_base.DbTestCase):
             spec=sushy.resources.system.storage.drive.Drive)
         mock_storage_drive.name = 'storage-drive'
         mock_storage_drive.capacity_bytes = '128'
+        mock_storage_drive.identity = 'Disk.Bay.0'
+        mock_storage_drive.media_type = 'SSD'
+        mock_storage_drive.protocol = None
+        mock_storage_drive.serial_number = 'SN0001'
+        mock_storage_drive.manufacturer = 'TestMfg'
+        mock_storage_drive.model = 'TestModel'
+        mock_storage_drive.revision = 'v1.0'
+        mock_storage_drive.status = None
 
         mock_storage = mock.Mock(
             spec=sushy.resources.system.storage.storage.Storage)
+        mock_storage.identity = 'RAID.SL.1-1'
+        mock_storage.name = 'Test Storage'
+        mock_storage.storage_controllers = []
         mock_storage.drives = [mock_storage_drive]
         system_mock.storage.get_members.return_value = [
             mock_storage]
@@ -1058,6 +1069,300 @@ class RedfishInspectTestCase(db_base.DbTestCase):
         self.assertEqual('aa:bb:cc:dd:ee:ff', lldp_dict['switch_chassis_id'])
         self.assertEqual('port-1', lldp_dict['switch_port_id'])
 
+    def test_get_storage_controllers(self):
+        """Test _get_storage_controllers collects all storage members."""
+        mock_drive = mock.Mock()
+        mock_drive.name = 'Physical Disk 0:0'
+        mock_drive.capacity_bytes = 480103981056
+        mock_drive.identity = 'Disk.Bay.0:Enclosure.Internal.0-1'
+        mock_drive.media_type = 'SSD'
+        mock_drive.protocol = mock.Mock(value='SATA')
+        mock_drive.serial_number = 'S4XBNE0M100001'
+        mock_drive.manufacturer = 'SAMSUNG'
+        mock_drive.model = 'MZ7LH480HAHQ'
+        mock_drive.revision = 'HXT7404Q'
+        mock_drive.status = mock.Mock(
+            health=mock.Mock(value='OK'),
+            state=mock.Mock(value='Enabled'),
+            health_rollup=None)
+
+        mock_sc = mock.Mock()
+        mock_sc.member_id = '0'
+        mock_sc.name = 'PERC H755 Front'
+        mock_sc.raid_types = [
+            mock.Mock(value='RAID0'),
+            mock.Mock(value='RAID1'),
+            mock.Mock(value='RAID5'),
+        ]
+        mock_sc.speed_gbps = 12
+        mock_sc.controller_protocols = [mock.Mock(value='PCIe')]
+        mock_sc.device_protocols = [
+            mock.Mock(value='SAS'), mock.Mock(value='SATA')]
+        mock_sc.status = mock.Mock(
+            health=mock.Mock(value='OK'),
+            state=mock.Mock(value='Enabled'),
+            health_rollup=None)
+
+        mock_raid = mock.Mock()
+        mock_raid.identity = 'RAID.SL.1-1'
+        mock_raid.name = 'PERC H755 Front'
+        mock_raid.storage_controllers = [mock_sc]
+        mock_raid.drives = [mock_drive]
+
+        mock_ahci = mock.Mock()
+        mock_ahci.identity = 'AHCI.Slot.1-1'
+        mock_ahci.name = 'AHCI Controller'
+        mock_ahci.storage_controllers = []
+        mock_ahci.drives = []
+
+        mock_system = mock.Mock()
+        mock_system.storage.get_members.return_value = [
+            mock_raid, mock_ahci]
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._get_storage_controllers(
+                task, mock_system)
+
+        # All storage members collected, no filtering
+        self.assertEqual(2, len(result))
+
+        # RAID controller
+        ctrl = result[0]
+        self.assertEqual('RAID.SL.1-1', ctrl['id'])
+        self.assertEqual('PERC H755 Front', ctrl['name'])
+        self.assertEqual(1, len(ctrl['storage_controllers']))
+        sc = ctrl['storage_controllers'][0]
+        self.assertEqual('0', sc['member_id'])
+        self.assertEqual('PERC H755 Front', sc['name'])
+        self.assertEqual(['RAID0', 'RAID1', 'RAID5'], sc['raid_types'])
+        self.assertEqual(12, sc['speed_gbps'])
+        self.assertEqual(['PCIe'], sc['controller_protocols'])
+        self.assertEqual(['SAS', 'SATA'], sc['device_protocols'])
+        self.assertEqual({'health': 'OK', 'state': 'Enabled'},
+                         sc['status'])
+
+        # Drive fields
+        self.assertEqual(1, len(ctrl['drives']))
+        drv = ctrl['drives'][0]
+        self.assertEqual('Physical Disk 0:0', drv['name'])
+        self.assertEqual(480103981056, drv['size'])
+        self.assertEqual('Disk.Bay.0:Enclosure.Internal.0-1', drv['id'])
+        self.assertEqual('SSD', drv['media_type'])
+        self.assertEqual('SATA', drv['protocol'])
+        self.assertEqual('S4XBNE0M100001', drv['serial_number'])
+        self.assertEqual('SAMSUNG', drv['manufacturer'])
+        self.assertEqual('MZ7LH480HAHQ', drv['model'])
+        self.assertEqual('HXT7404Q', drv['revision'])
+        self.assertEqual({'health': 'OK', 'state': 'Enabled'},
+                         drv['status'])
+
+        # AHCI controller - also collected
+        ahci = result[1]
+        self.assertEqual('AHCI.Slot.1-1', ahci['id'])
+        self.assertEqual([], ahci['storage_controllers'])
+        self.assertEqual([], ahci['drives'])
+
+    def test_get_storage_controllers_no_storage(self):
+        """Test _get_storage_controllers when system has no storage."""
+        mock_system = mock.Mock()
+        mock_system.storage = None
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._get_storage_controllers(
+                task, mock_system)
+
+        self.assertEqual([], result)
+
+    def test_get_storage_controllers_sushy_error(self):
+        """Test _get_storage_controllers handles SushyError gracefully."""
+        mock_system = mock.Mock()
+        mock_system.storage.get_members.side_effect = (
+            sushy.exceptions.SushyError('Connection failed'))
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._get_storage_controllers(
+                task, mock_system)
+
+        self.assertEqual([], result)
+
+    def test_parse_storage_controller_with_drives(self):
+        """Test parsing a storage controller with drives."""
+        mock_drive = mock.Mock()
+        mock_drive.name = 'Physical Disk 0'
+        mock_drive.capacity_bytes = 480000000000
+        mock_drive.identity = 'Disk.Bay.0'
+        mock_drive.media_type = 'HDD'
+        mock_drive.protocol = mock.Mock(value='SAS')
+        mock_drive.serial_number = 'WD-12345'
+        mock_drive.manufacturer = 'Western Digital'
+        mock_drive.model = 'WD4800'
+        mock_drive.revision = 'FW01'
+        mock_drive.status = mock.Mock(
+            health=mock.Mock(value='OK'),
+            state=mock.Mock(value='Enabled'),
+            health_rollup=None)
+
+        mock_storage = mock.Mock()
+        mock_storage.identity = 'RAID.Integrated.1-1'
+        mock_storage.name = 'Integrated RAID Controller'
+        mock_storage.storage_controllers = []
+        mock_storage.drives = [mock_drive]
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._parse_storage_controller(
+                task, mock_storage)
+
+        self.assertIsNotNone(result)
+        self.assertEqual('RAID.Integrated.1-1', result['id'])
+        self.assertEqual(1, len(result['drives']))
+        drv = result['drives'][0]
+        self.assertEqual('Physical Disk 0', drv['name'])
+        self.assertEqual(480000000000, drv['size'])
+        self.assertEqual('Disk.Bay.0', drv['id'])
+        self.assertEqual('HDD', drv['media_type'])
+        self.assertEqual('SAS', drv['protocol'])
+        self.assertEqual('WD-12345', drv['serial_number'])
+        self.assertEqual('Western Digital', drv['manufacturer'])
+        self.assertEqual('WD4800', drv['model'])
+        self.assertEqual('FW01', drv['revision'])
+        self.assertEqual({'health': 'OK', 'state': 'Enabled'},
+                         drv['status'])
+        self.assertEqual([], result['storage_controllers'])
+
+    def test_parse_storage_controller_multiple_drives(self):
+        """Test parsing with multiple drives."""
+        drives = []
+        for i in range(4):
+            mock_drive = mock.Mock()
+            mock_drive.name = 'Physical Disk %d' % i
+            mock_drive.capacity_bytes = 480000000000
+            mock_drive.identity = 'Disk.Bay.%d' % i
+            mock_drive.media_type = 'SSD'
+            mock_drive.protocol = mock.Mock(value='SATA')
+            mock_drive.serial_number = 'SN%d' % i
+            mock_drive.manufacturer = 'SAMSUNG'
+            mock_drive.model = 'MZ7LH480'
+            mock_drive.revision = 'FW01'
+            mock_drive.status = None
+            drives.append(mock_drive)
+
+        mock_storage = mock.Mock()
+        mock_storage.identity = 'RAID.SL.1-1'
+        mock_storage.name = 'RAID Controller'
+        mock_storage.storage_controllers = []
+        mock_storage.drives = drives
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._parse_storage_controller(
+                task, mock_storage)
+
+        self.assertEqual(4, len(result['drives']))
+        for i, drv in enumerate(result['drives']):
+            self.assertEqual('Physical Disk %d' % i, drv['name'])
+            self.assertEqual('SN%d' % i, drv['serial_number'])
+
+    def test_parse_storage_controller_multiple_sub_controllers(self):
+        """Test that all sub-controllers are collected."""
+        mock_sc1 = mock.Mock()
+        mock_sc1.member_id = '0'
+        mock_sc1.name = 'Controller 0'
+        mock_sc1.raid_types = [mock.Mock(value='RAID0')]
+        mock_sc1.speed_gbps = 12
+        mock_sc1.controller_protocols = [mock.Mock(value='PCIe')]
+        mock_sc1.device_protocols = [mock.Mock(value='SAS')]
+        mock_sc1.status = mock.Mock(
+            health=mock.Mock(value='OK'),
+            state=mock.Mock(value='Enabled'),
+            health_rollup=None)
+
+        mock_sc2 = mock.Mock()
+        mock_sc2.member_id = '1'
+        mock_sc2.name = 'Controller 1'
+        mock_sc2.raid_types = [
+            mock.Mock(value='RAID5'),
+            mock.Mock(value='RAID6'),
+        ]
+        mock_sc2.speed_gbps = 6
+        mock_sc2.controller_protocols = [mock.Mock(value='PCIe')]
+        mock_sc2.device_protocols = [mock.Mock(value='SATA')]
+        mock_sc2.status = mock.Mock(
+            health=mock.Mock(value='OK'),
+            state=mock.Mock(value='Enabled'),
+            health_rollup=None)
+
+        mock_storage = mock.Mock()
+        mock_storage.identity = 'RAID.SL.1-1'
+        mock_storage.name = 'RAID Controller'
+        mock_storage.storage_controllers = [mock_sc1, mock_sc2]
+        mock_storage.drives = []
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            result = task.driver.inspect._parse_storage_controller(
+                task, mock_storage)
+
+        self.assertEqual(2, len(result['storage_controllers']))
+        sc0 = result['storage_controllers'][0]
+        self.assertEqual(['RAID0'], sc0['raid_types'])
+        self.assertEqual(12, sc0['speed_gbps'])
+        self.assertEqual(['PCIe'], sc0['controller_protocols'])
+        self.assertEqual(['SAS'], sc0['device_protocols'])
+        sc1 = result['storage_controllers'][1]
+        self.assertEqual(['RAID5', 'RAID6'], sc1['raid_types'])
+        self.assertEqual(6, sc1['speed_gbps'])
+        self.assertEqual(['SATA'], sc1['device_protocols'])
+
+    @mock.patch.object(redfish_utils, 'get_enabled_macs', autospec=True)
+    @mock.patch.object(redfish_utils, 'get_system', autospec=True)
+    def test_inspect_hardware_includes_storage_controllers(
+            self, mock_get_system, mock_get_enabled_macs):
+        """Test that inspect_hardware includes storage_controllers."""
+        system_mock = self.init_system_mock(mock_get_system.return_value)
+
+        # Fix the existing mock storage to be parseable
+        original_storage = system_mock.storage.get_members.return_value
+        for s in original_storage:
+            s.identity = 'AHCI.1'
+            s.name = 'AHCI'
+            s.storage_controllers = []
+            s.volumes = None
+
+        # Add a new storage member with a drive
+        mock_drive = mock.Mock()
+        mock_drive.name = 'Physical Disk 0:0'
+        mock_drive.capacity_bytes = 480000000000
+        mock_drive.identity = 'Disk.Bay.0'
+        mock_drive.media_type = 'SSD'
+        mock_drive.protocol = None
+        mock_drive.serial_number = 'SN0001'
+        mock_drive.manufacturer = 'TestMfg'
+        mock_drive.model = 'TestModel'
+        mock_drive.revision = 'v1.0'
+        mock_drive.status = None
+
+        mock_storage = mock.Mock()
+        mock_storage.identity = 'RAID.SL.1-1'
+        mock_storage.name = 'RAID Controller'
+        mock_storage.storage_controllers = []
+        mock_storage.drives = [mock_drive]
+        mock_storage.volumes = None
+
+        system_mock.storage.get_members.return_value = (
+            original_storage + [mock_storage])
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=True) as task:
+            task.driver.inspect.inspect_hardware(task)
+
+        inventory = inspect_utils.get_inspection_data(self.node,
+                                                      self.context)
+        self.assertIn('storage_controllers',
+                      inventory['inventory'])
 
 
 class ContinueInspectionTestCase(db_base.DbTestCase):

@@ -136,8 +136,8 @@ opts = [
                min=60,
                help=_('The timeout (in seconds) after which a configdrive '
                       'temporary URL becomes invalid. Defaults to '
-                      'deploy_callback_timeout if it is set, otherwise to '
-                      '1800 seconds. Used when '
+                      'deploy_callback_timeout + 120 seconds if it is set, '
+                      'otherwise to 1800 seconds. Used when '
                       'configdrive_use_object_store is True.')),
     cfg.IntOpt('inspect_wait_timeout',
                default=1800,
