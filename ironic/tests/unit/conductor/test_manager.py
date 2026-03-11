@@ -9328,3 +9328,33 @@ class VirtualMediaTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         self.node.refresh()
         self.assertIn("Could not attach device cdrom", self.node.last_error)
         self.assertIn("disabled or not implemented", self.node.last_error)
+
+    @mock.patch.object(redfish.management.RedfishManagement,
+                       'get_virtual_media', autospec=True)
+    @mock.patch.object(redfish.management.RedfishManagement, 'validate',
+                       autospec=True)
+    def test_get_virtual_media(self, mock_validate, mock_get):
+        mock_get.return_value = [{'media_types': ['CD'], 'inserted': False,
+                                  'image': ''}]
+        result = self.service.get_virtual_media(self.context, self.node.id)
+        mock_validate.assert_called_once_with(mock.ANY, mock.ANY)
+        mock_get.assert_called_once_with(mock.ANY, mock.ANY)
+        self.assertEqual(mock_get.return_value, result)
+
+    @mock.patch.object(redfish.management.RedfishManagement,
+                       'get_virtual_media', autospec=True)
+    @mock.patch.object(redfish.management.RedfishManagement, 'validate',
+                       autospec=True)
+    def test_get_virtual_media_node_locked(self, mock_validate, mock_get):
+        """get_virtual_media uses a shared lock.
+
+        Succeeds even when the node is reserved by another operation.
+        """
+        self.node.reservation = 'fake-reserv'
+        self.node.save()
+        mock_get.return_value = [{'media_types': ['CD'], 'inserted': False,
+                                  'image': ''}]
+        result = self.service.get_virtual_media(self.context, self.node.id)
+        mock_validate.assert_called_once_with(mock.ANY, mock.ANY)
+        mock_get.assert_called_once_with(mock.ANY, mock.ANY)
+        self.assertEqual(mock_get.return_value, result)
