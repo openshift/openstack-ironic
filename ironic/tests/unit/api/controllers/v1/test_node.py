@@ -8869,6 +8869,36 @@ class TestNodeHistory(test_api_base.BaseApiTest):
         self.assertIn('limit=1', ret['next'])
         self.assertIn('marker=%s' % result_uuid, ret['next'])
 
+    def test_get_history_invalid_node(self):
+        ret = self.get_json('/nodes/99999-9999-99999/history',
+                            headers={api_base.Version.string: self.version},
+                            expect_errors=True)
+        self.assertEqual(http_client.NOT_FOUND, ret.status_code)
+
+    def test_get_all_history_with_sort_key(self):
+        self._add_history_entries()
+        ret = self.get_json(
+            '/nodes/{}/history?sort_key=uuid&sort_dir=asc'.format(
+                self.node.uuid),
+            headers={api_base.Version.string: self.version})
+        self.assertIn('history', ret)
+        uuids = [h['uuid'] for h in ret['history']]
+        self.assertEqual(sorted(uuids), uuids)
+
+    def test_get_all_history_error_severity(self):
+        event = objects.NodeHistory(node_id=self.node.id,
+                                    event='something broke',
+                                    severity='ERROR',
+                                    conductor='cat-tree1',
+                                    user='peaches')
+        event.create()
+        ret = self.get_json('/nodes/%s/history' % self.node.uuid,
+                            headers={api_base.Version.string: self.version})
+        entries = ret['history']
+        self.assertEqual(1, len(entries))
+        self.assertEqual('ERROR', entries[0]['severity'])
+
+
 
 class TestNodeInventory(test_api_base.BaseApiTest):
     fake_inventory_data = {'cpu': {'count': 1,
