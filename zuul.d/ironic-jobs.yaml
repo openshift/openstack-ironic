@@ -663,7 +663,7 @@
         HOST_TOPOLOGY_SUBNODES: "{{ hostvars['compute0']['nodepool']['public_ipv4'] }} {{ hostvars['compute1']['nodepool']['public_ipv4'] }}"
         IRONIC_BAREMETAL_BASIC_OPS: True
         IRONIC_BUILD_DEPLOY_RAMDISK: False
-        IRONIC_CALLBACK_TIMEOUT: 800
+        IRONIC_CALLBACK_TIMEOUT: 1200
         IRONIC_DEPLOY_DRIVER: redfish
         IRONIC_ENABLED_BOOT_INTERFACES: "redfish-virtual-media"
         IRONIC_ENABLED_HARDWARE_TYPES: redfish
@@ -680,6 +680,8 @@
         IRONIC_VM_COUNT: 1
         IRONIC_VM_EPHEMERAL_DISK: 0
         IRONIC_VM_LOG_DIR: '{{ devstack_base_dir }}/ironic-bm-logs'
+        IRONIC_VM_SPECS_CPU: 2
+        IRONIC_VM_SPECS_RAM: 2868
         IRONIC_VM_SPECS_DISK: 10
         OVS_BRIDGE_MAPPINGS: 'mynetwork:brbm,public:br-infra'
         OVS_PHYSICAL_BRIDGE: brbm
@@ -781,6 +783,8 @@
           IRONIC_VM_COUNT: 3
           IRONIC_VM_EPHEMERAL_DISK: 0
           IRONIC_VM_LOG_DIR: '{{ devstack_base_dir }}/ironic-bm-logs'
+          IRONIC_VM_SPECS_CPU: 2
+          IRONIC_VM_SPECS_RAM: 2868
           PHYSICAL_NETWORK: mynetwork
           Q_AGENT: openvswitch
           Q_ML2_TENANT_NETWORK_TYPE: vlan
@@ -1132,7 +1136,6 @@
         IRONIC_AUTODETECT_DEPLOY_INTERFACES: "bootc,direct"
         IRONIC_DEFAULT_RESCUE_INTERFACE: agent
         IRONIC_ENABLED_RESCUE_INTERFACES: "fake,agent,no-rescue"
-        IRONIC_ENABLED_CONSOLE_INTERFACES: "fake-graphical"
         IRONIC_TEMPEST_WHOLE_DISK_IMAGE: True
         IRONIC_VM_EPHEMERAL_DISK: 0
         SWIFT_ENABLE_TEMPURLS: True

@@ -33,11 +33,10 @@ class StringField(object_fields.StringField):
 
 
 class StringAcceptsCallable(object_fields.String):
-    @staticmethod
-    def coerce(obj, attr, value):
+    def coerce(self, obj, attr, value):
         if callable(value):
             value = value()
-        return super(StringAcceptsCallable, StringAcceptsCallable).coerce(
+        return super(StringAcceptsCallable, self).coerce(
             obj, attr, value)
 
 
@@ -81,8 +80,7 @@ class ListOfObjectsField(object_fields.ListOfObjectsField):
 
 
 class FlexibleDict(object_fields.FieldType):
-    @staticmethod
-    def coerce(obj, attr, value):
+    def coerce(self, obj, attr, value):
         if isinstance(value, str):
             value = ast.literal_eval(value)
         return dict(value)
@@ -144,8 +142,7 @@ class NotificationStatusField(object_fields.BaseEnumField):
 
 
 class MACAddress(object_fields.FieldType):
-    @staticmethod
-    def coerce(obj, attr, value):
+    def coerce(self, obj, attr, value):
         return utils.validate_and_normalize_mac(value)
 
 
