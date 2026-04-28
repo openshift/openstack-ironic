@@ -683,6 +683,7 @@
         IRONIC_VM_SPECS_CPU: 2
         IRONIC_VM_SPECS_RAM: 2868
         IRONIC_VM_SPECS_DISK: 10
+        IRONIC_FAIL_ON_BINDING_FAILURE: True
         OVS_BRIDGE_MAPPINGS: 'mynetwork:brbm,public:br-infra'
         OVS_PHYSICAL_BRIDGE: brbm
         PHYSICAL_NETWORK: mynetwork
@@ -785,6 +786,7 @@
           IRONIC_VM_LOG_DIR: '{{ devstack_base_dir }}/ironic-bm-logs'
           IRONIC_VM_SPECS_CPU: 2
           IRONIC_VM_SPECS_RAM: 2868
+          IRONIC_FAIL_ON_BINDING_FAILURE: True
           PHYSICAL_NETWORK: mynetwork
           Q_AGENT: openvswitch
           Q_ML2_TENANT_NETWORK_TYPE: vlan
