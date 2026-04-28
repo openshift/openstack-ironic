@@ -525,6 +525,9 @@ if [ -f /etc/devstack-host ]; then
     fi
 fi
 
+# If Ironic should set [neutron]fail_on_port_binding_failure.
+IRONIC_FAIL_ON_BINDING_FAILURE=${IRONIC_FAIL_ON_BINDING_FAILURE:-}
+
 if [[ "$IRONIC_IP_VERSION" != '6' ]]; then
     # NOTE(TheJulia): Lets not try and support mixed mode since the conductor
     # can't support mixed mode operation. We are either IPv4 OR IPv6.
@@ -1720,6 +1723,10 @@ function configure_ironic {
     fi
     if [[ "${SERVICE_PROJECT_NAME:-service}" != "service" ]]; then
         iniset $IRONIC_CONF_FILE DEFAULT rbac_service_project_name $SERVICE_PROJECT_NAME
+    fi
+
+    if [[ "$IRONIC_FAIL_ON_BINDING_FAILURE" != "" ]]; then
+        iniset $IRONIC_CONF_FILE neutron fail_on_port_binding_failure $IRONIC_FAIL_ON_BINDING_FAILURE
     fi
 
     # Set fast track options
