@@ -205,3 +205,95 @@ class DbRunbookTestCase(base.DbTestCase):
         names = ['CUSTOM_FOO']
         res = self.dbapi.get_runbook_list_by_names(names=names)
         self.assertEqual([], res)
+
+    # --- trait tests ---
+
+    def test_create_with_traits(self):
+        uuid = uuidutils.generate_uuid()
+        runbook = db_utils.create_test_runbook(
+            uuid=uuid, name='CUSTOM_DT_TRAITS',
+            traits=['CUSTOM_FOO', 'CUSTOM_BAR'])
+        trait_values = sorted(t.trait for t in runbook.traits)
+        self.assertEqual(['CUSTOM_BAR', 'CUSTOM_FOO'], trait_values)
+        for t in runbook.traits:
+            self.assertEqual(runbook.id, t.runbook_id)
+
+    def test_create_with_duplicate_traits(self):
+        uuid = uuidutils.generate_uuid()
+        runbook = db_utils.create_test_runbook(
+            uuid=uuid, name='CUSTOM_DT_DUP',
+            traits=['CUSTOM_FOO', 'CUSTOM_FOO', 'CUSTOM_BAR'])
+        trait_values = sorted(t.trait for t in runbook.traits)
+        self.assertEqual(['CUSTOM_BAR', 'CUSTOM_FOO'], trait_values)
+
+    def test_create_without_traits(self):
+        res = self.dbapi.get_runbook_by_id(self.runbook.id)
+        self.assertEqual([], res.traits)
+
+    def test_set_runbook_traits(self):
+        self.dbapi.set_runbook_traits(
+            self.runbook.id, ['CUSTOM_A', 'CUSTOM_B'], version='1.0')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual({'CUSTOM_A', 'CUSTOM_B'},
+                         {t.trait for t in traits})
+
+    def test_set_runbook_traits_replaces_existing(self):
+        self.dbapi.set_runbook_traits(
+            self.runbook.id, ['CUSTOM_OLD'], version='1.0')
+        self.dbapi.set_runbook_traits(
+            self.runbook.id, ['CUSTOM_NEW1', 'CUSTOM_NEW2'], version='1.0')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual({'CUSTOM_NEW1', 'CUSTOM_NEW2'},
+                         {t.trait for t in traits})
+
+    def test_set_runbook_traits_deduplicates(self):
+        self.dbapi.set_runbook_traits(
+            self.runbook.id, ['CUSTOM_A', 'CUSTOM_A'], version='1.0')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual(1, len(traits))
+        self.assertEqual('CUSTOM_A', traits[0].trait)
+
+    def test_unset_runbook_traits(self):
+        self.dbapi.set_runbook_traits(
+            self.runbook.id, ['CUSTOM_A', 'CUSTOM_B'], version='1.0')
+        self.dbapi.unset_runbook_traits(self.runbook.id)
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual([], traits)
+
+    def test_add_runbook_trait(self):
+        self.dbapi.add_runbook_trait(
+            self.runbook.id, 'CUSTOM_TRAIT', version='1.0')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual(1, len(traits))
+        self.assertEqual('CUSTOM_TRAIT', traits[0].trait)
+        self.assertEqual(self.runbook.id, traits[0].runbook_id)
+
+    def test_add_runbook_trait_duplicate_ignored(self):
+        self.dbapi.add_runbook_trait(
+            self.runbook.id, 'CUSTOM_TRAIT', version='1.0')
+        # Adding same trait again must not raise.
+        self.dbapi.add_runbook_trait(
+            self.runbook.id, 'CUSTOM_TRAIT', version='1.0')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual(1, len(traits))
+
+    def test_delete_runbook_trait(self):
+        self.dbapi.add_runbook_trait(
+            self.runbook.id, 'CUSTOM_TRAIT', version='1.0')
+        self.dbapi.delete_runbook_trait(self.runbook.id, 'CUSTOM_TRAIT')
+        traits = self.dbapi.get_runbook_traits_by_runbook_id(self.runbook.id)
+        self.assertEqual([], traits)
+
+    def test_delete_runbook_trait_not_found(self):
+        from ironic.common import exception as exc
+        self.assertRaises(exc.RunbookTraitNotFound,
+                          self.dbapi.delete_runbook_trait,
+                          self.runbook.id, 'CUSTOM_NONEXISTENT')
+
+    def test_runbook_trait_exists(self):
+        self.dbapi.add_runbook_trait(
+            self.runbook.id, 'CUSTOM_TRAIT', version='1.0')
+        self.assertTrue(
+            self.dbapi.runbook_trait_exists(self.runbook.id, 'CUSTOM_TRAIT'))
+        self.assertFalse(
+            self.dbapi.runbook_trait_exists(self.runbook.id, 'CUSTOM_OTHER'))

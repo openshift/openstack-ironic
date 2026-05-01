@@ -2819,6 +2819,12 @@ class Connection(api.Connection):
             if t not in seen:
                 seen.add(t)
                 unique_traits.append(t)
+        # Build RunbookTrait objects without an explicit runbook_id; SQLAlchemy
+        # will populate the FK via the 'traits' relationship when the runbook
+        # is flushed, avoiding a separate flush just to obtain runbook.id.
+        values['traits'] = [
+            models.RunbookTrait(trait=t, version='1.0') for t in unique_traits
+        ]
 
         runbook = models.Runbook()
         runbook.update(values)
@@ -2826,18 +2832,14 @@ class Connection(api.Connection):
             try:
                 session.add(runbook)
                 session.flush()
-                # Now add traits using the flushed runbook id
-                for trait in unique_traits:
-                    runbook_trait = models.RunbookTrait(
-                        trait=trait, runbook_id=runbook.id, version='1.0')
-                    session.add(runbook_trait)
-                session.flush()
             except db_exc.DBDuplicateEntry as e:
                 if 'name' in e.columns:
                     raise exception.RunbookDuplicateName(
                         name=values['name'])
-                raise exception.RunbookAlreadyExists(
-                    uuid=values['uuid'])
+                if 'uuid' in e.columns:
+                    raise exception.RunbookAlreadyExists(
+                        uuid=values['uuid'])
+                raise
         # Re-fetch so that the traits relationship is eagerly loaded within
         # a fresh read session (the write session above is now closed).
         return self.get_runbook_by_uuid(runbook.uuid)
@@ -2989,16 +2991,26 @@ class Connection(api.Connection):
     def set_runbook_traits(self, runbook_id, traits, version):
         # Remove duplicate traits
         traits = set(traits)
+        runbook_traits = [
+            models.RunbookTrait(trait=t, runbook_id=runbook_id,
+                                version=version)
+            for t in traits
+        ]
 
         with _session_for_write() as session:
-            # NOTE: Runbook existence is checked in unset_runbook_traits.
-            self.unset_runbook_traits(runbook_id)
-            runbook_traits = []
-            for trait in traits:
-                runbook_trait = models.RunbookTrait(
-                    trait=trait, runbook_id=runbook_id, version=version)
+            # Lock the runbook row to serialise concurrent set operations.
+            # This also serves as the existence check: two clients calling
+            # set_runbook_traits at the same time will queue at this point
+            # rather than racing on the delete + insert below.
+            if not (session.query(models.Runbook)
+                    .filter_by(id=runbook_id)
+                    .with_for_update()
+                    .scalar()):
+                raise exception.RunbookNotFound(runbook=runbook_id)
+            session.query(models.RunbookTrait).filter_by(
+                runbook_id=runbook_id).delete()
+            for runbook_trait in runbook_traits:
                 session.add(runbook_trait)
-                runbook_traits.append(runbook_trait)
 
         return runbook_traits
 
