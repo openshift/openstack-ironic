@@ -653,6 +653,7 @@ def get_test_runbook(**kw):
         'uuid': kw.get('uuid', default_uuid),
         'steps': kw.get('steps', [get_test_runbook_step(
             runbook_id=kw.get('id', 234))]),
+        'traits': kw.get('traits', []),
         'disable_ramdisk': kw.get('disable_ramdisk', False),
         'extra': kw.get('extra', {}),
         'public': kw.get('public', False),
