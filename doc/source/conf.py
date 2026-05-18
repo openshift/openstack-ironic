@@ -61,6 +61,11 @@ autodoc_default_options = {
     'special-members': '__call__',
 }
 
+# FIXME: Temporarily disable rendering of type annotations in autodoc
+# signatures until [1] is resolved.
+# [1] https://github.com/sphinx-doc/sphinx/issues/14223
+autodoc_typehints = 'none'
+
 autosummary_mock_imports = [
     'ironic.wsgi',
 ]
