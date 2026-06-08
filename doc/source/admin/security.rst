@@ -560,7 +560,7 @@ connections are configured in the ``[agent]`` section:
    Ironic.
 
 Configuring TLS for the noVNC Proxy
--------------------------------------
+-----------------------------------
 
 When Ironic's integrated ``ironic-novncproxy`` service is used to
 provide browser-based console access, TLS settings can be
@@ -592,8 +592,108 @@ configured in the ``[vnc]`` section:
    controls the IP address and port mapping used to expose the
    container VNC port to the host.
 
+Configuring TLS for Image Downloads and OCI Registry Connections
+----------------------------------------------------------------
+
+The conductor makes outbound HTTPS connections to remote HTTP
+servers hosting static disk images and to OCI container
+registries serving container image blobs. TLS settings for
+both types of connections are configured in the ``[DEFAULT]``
+section:
+
+.. code-block:: ini
+
+   [DEFAULT]
+   # Enforce TLS 1.3 minimum for outbound HTTPS connections
+   webserver_tls_minimum_version = 1.3
+
+   # Optionally restrict available ciphers
+   # webserver_tls_ciphers = ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM
+
+These settings govern connections to:
+
+* HTTP servers hosting disk images and deployment artifacts
+  (the same connections controlled by ``webserver_verify_ca``
+  and ``webserver_connection_timeout``)
+* OCI container registries when deploying container-based
+  workloads
+
+Configuring TLS for Redfish BMC Connections
+--------------------------------------------
+
+The conductor makes outbound HTTPS connections to Redfish BMCs.
+TLS settings can be configured globally in the ``[redfish]``
+section, and overridden per-node via ``driver_info``:
+
+.. code-block:: ini
+
+   [redfish]
+   # Set a global minimum TLS version for BMC connections
+   # Supported values: 1.1, 1.2, 1.3
+   tls_minimum_version = 1.2
+
+   # Optionally restrict available ciphers
+   # tls_ciphers = ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM
+
+Per-node overrides can be set in the node's ``driver_info``:
+
+.. code-block:: bash
+
+   baremetal node set <node> \
+     --driver-info redfish_tls_minimum_version=1.3 \
+     --driver-info redfish_tls_ciphers=ECDHE+AESGCM
+
+Unlike the API, JSON-RPC, and image download settings, no
+default minimum TLS version is enforced for Redfish connections.
+This is because BMCs are embedded firmware on physical hardware
+where the TLS capabilities vary significantly across vendors
+and generations. Firmware updates may be difficult, risky, or
+unavailable, and the BMC is often the only management interface
+for the machine. Enforcing a default could render hardware
+unmanageable after an Ironic upgrade.
+
+Operators are strongly encouraged to set
+``tls_minimum_version = 1.2`` globally once they have confirmed
+their BMC fleet supports it. Per-node overrides can accommodate
+older hardware that requires weaker TLS:
+
+.. code-block:: bash
+
+   # Allow TLS 1.1 for a specific older BMC
+   baremetal node set <node> \
+     --driver-info redfish_tls_minimum_version=1.1
+
+.. note::
+   TLS 1.0 and 1.1 are deprecated per RFC 8996 and have known
+   vulnerabilities. The ``1.1`` option is provided solely for
+   compatibility with older BMC firmware that does not support
+   TLS 1.2.
+
+Configuring TLS for Ansible Deploy Image Downloads
+----------------------------------------------------
+
+When the Ansible deploy driver is used, image downloads to the
+target node are performed by the ``stream_url`` Ansible module.
+This module respects the same ``[DEFAULT]`` TLS configuration
+options used for webserver and OCI connections:
+
+.. code-block:: ini
+
+   [DEFAULT]
+   # Enforce TLS 1.3 minimum for image downloads to target nodes
+   webserver_tls_minimum_version = 1.3
+
+   # Optionally restrict available ciphers
+   # webserver_tls_ciphers = ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM
+
+.. note::
+   The ``stream_url`` module runs on the target node, not the
+   conductor. The target node's Python environment must have
+   a version of OpenSSL that supports the configured minimum
+   TLS version.
+
 Post-Quantum Cryptography Readiness
--------------------------------------
+-----------------------------------
 
 Post-Quantum Cryptography (PQC) key exchange mechanisms such as
 ML-KEM (Kyber) are available through TLS 1.3 hybrid key exchange
