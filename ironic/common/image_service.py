@@ -33,10 +33,32 @@ from ironic.common import exception
 from ironic.common.glance_service.image_service import GlanceImageService
 from ironic.common.i18n import _
 from ironic.common import oci_registry
+from ironic.common import tls_utils
 from ironic.common import utils
 from ironic.conf import CONF
 
 IMAGE_CHUNK_SIZE = 1024 * 1024  # 1mb
+
+# Re-export so that existing references (including tests) continue
+# to resolve via image_service.TLSHTTPAdapter.
+TLSHTTPAdapter = tls_utils.TLSHTTPAdapter
+
+
+def _build_webserver_session():
+    """Build a requests Session with TLS settings from config.
+
+    :returns: A requests.Session, optionally configured with
+              TLS minimum version and cipher restrictions.
+    """
+    session = requests.Session()
+    ctx = tls_utils.build_ssl_context(
+        tls_minimum_version=CONF.webserver_tls_minimum_version,
+        tls_ciphers=CONF.webserver_tls_ciphers)
+    if ctx:
+        adapter = TLSHTTPAdapter(ssl_context=ctx)
+        session.mount('https://', adapter)
+    return session
+
 # NOTE(JayF): This is the check-of-last-resort; we also have an allowlist
 # enabled by default. These represent paths that under no circumstances should
 # we access for file:// URLs
@@ -99,6 +121,7 @@ class HttpImageService(BaseImageService):
 
     def __init__(self):
         self._transfer_verified_checksum = None
+        self.session = _build_webserver_session()
 
     @property
     def transfer_verified_checksum(self):
@@ -181,9 +204,10 @@ class HttpImageService(BaseImageService):
             auth = HttpImageService.gen_auth_from_conf_user_pass(image_href)
             # NOTE(TheJulia): Head requests do not work on things that are not
             # files, but they can be responded with redirects or a 200 OK....
-            response = requests.head(image_href, verify=verify,
-                                     timeout=CONF.webserver_connection_timeout,
-                                     auth=auth, allow_redirects=True)
+            response = self.session.head(
+                image_href, verify=verify,
+                timeout=CONF.webserver_connection_timeout,
+                auth=auth, allow_redirects=True)
 
             if (response.status_code == http_client.FORBIDDEN
                     and str(image_href).endswith('/')):
@@ -239,9 +263,10 @@ class HttpImageService(BaseImageService):
 
         try:
             auth = HttpImageService.gen_auth_from_conf_user_pass(image_href)
-            response = requests.get(image_href, stream=True, verify=verify,
-                                    timeout=CONF.webserver_connection_timeout,
-                                    auth=auth)
+            response = self.session.get(
+                image_href, stream=True, verify=verify,
+                timeout=CONF.webserver_connection_timeout,
+                auth=auth)
             if response.status_code != http_client.OK:
                 raise exception.ImageRefValidationFailed(
                     image_href=image_href,
@@ -360,9 +385,11 @@ class HttpImageService(BaseImageService):
 
         try:
             auth = HttpImageService.gen_auth_from_conf_user_pass(image_href)
-            response = requests.get(image_href, stream=False, verify=verify,
-                                    timeout=CONF.webserver_connection_timeout,
-                                    auth=auth)
+            session = _build_webserver_session()
+            response = session.get(
+                image_href, stream=False, verify=verify,
+                timeout=CONF.webserver_connection_timeout,
+                auth=auth)
             if response.status_code != http_client.OK:
                 raise exception.ImageRefValidationFailed(
                     image_href=image_href,
