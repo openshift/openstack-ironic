@@ -127,7 +127,9 @@ class TestContinueInspection(db_base.DbTestCase):
     def setUp(self):
         super().setUp()
         self.node = obj_utils.create_test_node(
-            self.context, provision_state=states.INSPECTING)
+            self.context, provision_state=states.INSPECTING,
+            driver_internal_info={'agent_url': 'url',
+                                  'agent_secret_token': 'token'})
         self.inventory = {"test": "inventory"}
         self.plugin_data = {"plugin": "data", "logs": "delete me"}
 
@@ -144,6 +146,9 @@ class TestContinueInspection(db_base.DbTestCase):
             self.assertNotIn("logs", self.plugin_data)
         self.node.refresh()
         self.assertEqual(states.MANAGEABLE, self.node.provision_state)
+        self.assertNotIn('agent_url', self.node.driver_internal_info)
+        self.assertNotIn('agent_secret_token',
+                         self.node.driver_internal_info)
 
     @mock.patch.object(inspect_utils, 'store_inspection_data', autospec=True)
     def test_ok_asynchronous(self, mock_store, mock_continue):

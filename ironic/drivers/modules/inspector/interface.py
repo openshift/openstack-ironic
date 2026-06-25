@@ -366,6 +366,7 @@ def clean_up(task, finish=True):
         msg = _('Inspection clean up failed: %s') % errors
         inspection_error_handler(task, msg, raise_exc=False, clean_up=False)
     elif finish:
+        cond_utils.wipe_token_and_url(task)
         LOG.info('Inspection finished successfully for node %s',
                  task.node.uuid)
         task.process_event('done')

@@ -364,6 +364,9 @@ class CheckStatusTestCase(BaseTestCase):
         self.assertFalse(self.task.process_event.called)
 
     def test_status_ok(self, mock_client):
+        self.node.set_driver_internal_info('agent_url', 'url')
+        self.node.set_driver_internal_info('agent_secret_token', 'token')
+        self.node.save()
         mock_get = mock_client.return_value.get_introspection
         mock_get.return_value = mock.Mock(is_finished=True,
                                           error=None,
@@ -374,10 +377,15 @@ class CheckStatusTestCase(BaseTestCase):
         self.assertFalse(self.driver.network.remove_inspection_network.called)
         self.assertFalse(self.driver.boot.clean_up_ramdisk.called)
         self.assertFalse(self.driver.power.set_power_state.called)
+        self.assertNotIn('agent_url', self.node.driver_internal_info)
+        self.assertNotIn('agent_secret_token',
+                         self.node.driver_internal_info)
 
     def test_status_ok_managed(self, mock_client):
         utils.set_node_nested_field(self.node, 'driver_internal_info',
                                     'inspector_manage_boot', True)
+        self.node.set_driver_internal_info('agent_url', 'url')
+        self.node.set_driver_internal_info('agent_secret_token', 'token')
         self.node.save()
         mock_get = mock_client.return_value.get_introspection
         mock_get.return_value = mock.Mock(is_finished=True,
@@ -391,6 +399,9 @@ class CheckStatusTestCase(BaseTestCase):
         self.driver.boot.clean_up_ramdisk.assert_called_once_with(self.task)
         self.driver.power.set_power_state.assert_called_once_with(
             self.task, 'power off', timeout=None)
+        self.assertNotIn('agent_url', self.node.driver_internal_info)
+        self.assertNotIn('agent_secret_token',
+                         self.node.driver_internal_info)
 
     def test_status_ok_managed_no_power_off(self, mock_client):
         CONF.set_override('power_off', False, group='inspector')
