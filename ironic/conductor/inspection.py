@@ -61,6 +61,7 @@ def inspect_hardware(task):
         raise exception.HardwareInspectionFailure(error=error)
 
     if new_state == states.MANAGEABLE:
+        utils.wipe_token_and_url(task)
         task.process_event('done')
         LOG.info('Successfully inspected node %(node)s',
                  {'node': node.uuid})
@@ -151,5 +152,6 @@ def continue_inspection(task, inventory, plugin_data):
                                       error=True)
             task.process_event('fail')
 
+    utils.wipe_token_and_url(task)
     task.process_event('done')
     LOG.info('Successfully finished inspection of node %s', node.uuid)

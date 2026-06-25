@@ -3578,6 +3578,21 @@ class ConductorManager(base_manager.BaseConductorManager):
                                   shared=True) as task:
             node = task.node
             if utils.is_agent_token_present(task.node):
+                if (not utils.is_agent_token_pregenerated(task.node)
+                        and task.node.provision_state
+                        in (states.CLEANWAIT, states.DEPLOYWAIT,
+                            states.RESCUEWAIT, states.SERVICEWAIT)):
+                    LOG.warning(
+                        'Node %(node)s in state %(state)s has an '
+                        'existing agent token but received a new '
+                        'lookup request. Regenerating token '
+                        '(possible unexpected reboot).',
+                        {'node': node_id,
+                         'state': task.node.provision_state})
+                    task.upgrade_lock(retry=False)
+                    utils.add_secret_token(task.node)
+                    task.node.save()
+                    return objects.Node.get(context, node_id)
                 LOG.warning('An agent token generation request is being '
                             'refused as one is already present for '
                             'node %(node)s',

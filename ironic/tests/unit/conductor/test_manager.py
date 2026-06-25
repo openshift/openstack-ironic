@@ -3732,6 +3732,49 @@ class MiscTestCase(mgr_utils.ServiceSetUpMixin, mgr_utils.CommonMixIn,
                                 self.context, node.id)
         self.assertEqual(exception.NodeLocked, exc.exc_info[0])
 
+    def test_node_with_token_regenerated_in_clean_wait(self):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            network_interface='noop',
+            provision_state=states.CLEANWAIT,
+            target_provision_state=states.AVAILABLE,
+            driver_internal_info={'agent_secret_token': 'old_secret'})
+        res = self.service.get_node_with_token(self.context, node.id)
+        self.assertIn('agent_secret_token', res.driver_internal_info)
+        self.assertNotEqual('old_secret',
+                            res.driver_internal_info['agent_secret_token'])
+        self.assertNotEqual('******',
+                            res.driver_internal_info['agent_secret_token'])
+        self.assertGreaterEqual(
+            len(res.driver_internal_info['agent_secret_token']), 32)
+
+    def test_node_with_token_regenerated_in_deploy_wait(self):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            network_interface='noop',
+            provision_state=states.DEPLOYWAIT,
+            target_provision_state=states.ACTIVE,
+            driver_internal_info={'agent_secret_token': 'old_secret'})
+        res = self.service.get_node_with_token(self.context, node.id)
+        self.assertIn('agent_secret_token', res.driver_internal_info)
+        self.assertNotEqual('old_secret',
+                            res.driver_internal_info['agent_secret_token'])
+        self.assertNotEqual('******',
+                            res.driver_internal_info['agent_secret_token'])
+
+    def test_node_with_token_pregenerated_masked_in_clean_wait(self):
+        node = obj_utils.create_test_node(
+            self.context, driver='fake-hardware',
+            network_interface='noop',
+            provision_state=states.CLEANWAIT,
+            target_provision_state=states.AVAILABLE,
+            driver_internal_info={
+                'agent_secret_token': 'pregenerated_secret',
+                'agent_secret_token_pregenerated': True})
+        res = self.service.get_node_with_token(self.context, node.id)
+        self.assertEqual('******',
+                         res.driver_internal_info['agent_secret_token'])
+
 
 @mgr_utils.mock_record_keepalive
 class ConsoleTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
