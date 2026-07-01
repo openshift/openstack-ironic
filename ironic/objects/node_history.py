@@ -24,7 +24,8 @@ from ironic.objects import fields as object_fields
 class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
     # Version 1.0: Initial version
     # Version 1.1: Relevant methods changed to be remotable methods.
-    VERSION = '1.1'
+    # Version 1.2: Added project field.
+    VERSION = '1.2'
 
     dbapi = dbapi.get_instance()
 
@@ -34,12 +35,14 @@ class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
         'conductor': object_fields.StringField(nullable=True),
         'event': object_fields.StringField(nullable=True),
         'user': object_fields.StringField(nullable=True),
+        'project': object_fields.StringField(nullable=True),
         'node_id': object_fields.IntegerField(nullable=True),
         'event_type': object_fields.StringField(nullable=True),
         'severity': object_fields.StringField(nullable=True),
     }
 
-    @object_base.remotable_classmethod
+    @classmethod
+    @object_base.remotable
     def get(cls, context, history_ident):
         """Get a history based on its id or uuid.
 
@@ -56,7 +59,8 @@ class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
         else:
             raise exception.InvalidIdentity(identity=history_ident)
 
-    @object_base.remotable_classmethod
+    @classmethod
+    @object_base.remotable
     def get_by_id(cls, context, history_id):
         """Get a NodeHistory object by its integer ID.
 
@@ -71,7 +75,8 @@ class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
         history = cls._from_db_object(context, cls(), db_history)
         return history
 
-    @object_base.remotable_classmethod
+    @classmethod
+    @object_base.remotable
     def get_by_uuid(cls, context, uuid):
         """Get a NodeHistory object by its UUID.
 
@@ -86,7 +91,8 @@ class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
         history = cls._from_db_object(context, cls(), db_history)
         return history
 
-    @object_base.remotable_classmethod
+    @classmethod
+    @object_base.remotable
     def list(cls, context, limit=None, marker=None, sort_key=None,
              sort_dir=None):
         """Return a list of NodeHistory objects.
@@ -107,7 +113,8 @@ class NodeHistory(base.IronicObject, object_base.VersionedObjectDictCompat):
                                                        sort_dir=sort_dir)
         return cls._from_db_object_list(context, db_histories)
 
-    @object_base.remotable_classmethod
+    @classmethod
+    @object_base.remotable
     def list_by_node_id(cls, context, node_id, limit=None, marker=None,
                         sort_key=None, sort_dir=None):
         """Return a list of NodeHistory objects belongs to a given node ID.
