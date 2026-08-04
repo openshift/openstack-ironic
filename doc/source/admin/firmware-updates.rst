@@ -15,17 +15,25 @@ mode, processing of the remaining updates will continue.
 .. note:: Only :doc:`/admin/drivers/redfish` supports firmware updates
    currently.
 
+All non-BMC firmware updates (BIOS, NIC) use a two-phase approach: the
+firmware is staged via Redfish SimpleUpdate, then a reboot is triggered to
+apply it. By default, each non-BMC component gets its own reboot (batch of
+one). Use ``allow_grouping_reboots`` to share a single reboot across
+adjacent non-BMC components — see `Batched updates (consolidated reboot)`_
+below.
+
 When updating the BMC firmware, the BMC may become unavailable for a period of
 time as it resets. In this case, it may be desirable to have the step
 wait after the update has been applied before indicating that the
 update was successful. This allows the BMC time to fully reset before further
 operations are carried out against it. To cause the step to wait after
-applying an update, an optional ``wait`` argument may be specified in the
+applying a BMC update, an optional ``wait`` argument may be specified in the
 firmware image dictionary. The value of this argument indicates the number of
-seconds to wait following the update. If the ``wait`` argument is not
-specified, then this is equivalent to ``wait 0``, meaning that it will not
-wait and immediately proceed with the next firmware update if there is one,
-or complete the step if not.
+seconds to wait following the update. The ``wait`` argument is only supported
+for BMC components; specifying it on a non-BMC component is rejected. If the
+``wait`` argument is not specified, then this is equivalent to ``wait 0``,
+meaning that it will not wait and immediately proceed with the next firmware
+update if there is one, or complete the step if not.
 
 How it works
 ------------
@@ -92,6 +100,86 @@ mandatory, while the ``wait`` argument is optional.
 
 For ``url`` currently ``http``, ``https``, ``swift`` and ``file`` schemes are
 supported.
+
+Batched updates (consolidated reboot)
+--------------------------------------
+
+By default, the firmware update step applies each component sequentially and
+reboots the server after each one. When updating multiple non-BMC components
+(BIOS, NICs), you can use the ``allow_grouping_reboots`` argument to stage all
+firmware packages and apply them in a single consolidated reboot, reducing
+total downtime::
+
+    [{
+        "interface": "firmware",
+        "step": "update",
+        "args": {
+            "settings": [
+                {"component": "bios", "url": "http://192.0.2.10/BIOS_v2.0.EXE"},
+                {"component": "nic:NIC.1-1", "url": "http://192.0.2.10/NIC_v3.0.EXE"},
+                {"component": "nic:NIC.Slot.2", "url": "http://192.0.2.10/NIC2_v3.0.EXE"}
+            ],
+            "allow_grouping_reboots": true
+        }
+    }]
+
+**How batching works:**
+
+1. Each non-BMC component is submitted via Redfish SimpleUpdate one at a time.
+   The step waits for each to reach a "staged" state before submitting the
+   next (firmware is downloaded to the BMC but not yet applied).
+
+2. After all components are staged, a single consolidated reboot is triggered.
+   Firmware is applied during POST.
+
+3. After the reboot, the step waits for the BMC to become responsive and
+   verifies that all firmware tasks completed successfully.
+
+**Segmentation rules:**
+
+A reboot is shared by a maximal run of adjacent, distinct, non-BMC components.
+BMC firmware updates always use the sequential path with their own reboot, as
+they reset the management controller rather than the host.
+
+For example, ``[bios, nic:NIC.1-1, bmc, nic:NIC.Slot.2, nic:NIC.Slot.3]``
+produces three phases: batch ``[bios, nic:NIC.1-1]`` with one reboot,
+``bmc`` sequential with its own reset, then batch
+``[nic:NIC.Slot.2, nic:NIC.Slot.3]`` with one reboot — 3 reboots instead
+of 5.
+
+**Restrictions:**
+
+- Each component value must be unique within the settings list. Duplicate
+  components (e.g., two ``bios`` entries) are rejected because batching stages
+  all packages against the running firmware and applies them in a single
+  reboot, making repeated updates of the same component unsafe. Use separate
+  ``firmware.update`` steps for staged upgrade paths.
+
+- The ``wait`` per-component argument is only supported for BMC components.
+  Specifying ``wait`` on a non-BMC component (BIOS, NIC) is rejected
+  regardless of the ``allow_grouping_reboots`` setting.
+
+**Timeout sizing:**
+
+With ``allow_grouping_reboots``, the overall timeout
+(``firmware_update_overall_timeout``) must account for staging time of all
+components plus the reboot. Firmware staging can take several minutes per
+component (Dell NIC firmware may take ~6.5 minutes). Size the timeout
+accordingly for the number of components being batched.
+
+**Failure semantics:**
+
+When ``allow_grouping_reboots`` is enabled, firmware is staged for all
+components before any reboot is triggered. If a failure occurs partway through
+staging, components that were successfully staged remain scheduled on the BMC
+and will apply on the next host boot, regardless of what triggers it (operator
+power-cycle, next cleaning attempt, deploy).
+
+The affected component names are listed in ``last_error`` on the node. Retrying
+``firmware.update`` will stage those components a second time — the same
+double-staging that the duplicate-component rule exists to prevent, arriving
+through a path validation cannot see. If this is a concern, inspect
+``last_error`` and take corrective action before retrying.
 
 Applying updates
 ----------------
