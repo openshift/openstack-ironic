@@ -1,0 +1,51 @@
+---
+features:
+  - |
+    All non-BMC firmware updates (BIOS, NIC) now use a unified two-phase
+    approach: firmware is staged via Redfish SimpleUpdate, then a reboot
+    is triggered to apply it. By default each non-BMC component gets its
+    own staging and reboot cycle (batch of one).
+
+    A new ``allow_grouping_reboots`` argument to the Redfish
+    ``firmware.update`` step (cleaning, servicing, or deploy) allows
+    adjacent non-BMC components to share a single consolidated reboot,
+    reducing total downtime.
+
+    BMC firmware entries automatically segment the list, as BMC updates
+    reset the management controller rather than the host. Each segment
+    of adjacent, distinct, non-BMC components shares one reboot.
+
+    For example, ``[bios, nic:NIC.1-1, bmc, nic:NIC.Slot.2, nic:NIC.Slot.3]``
+    produces three phases and three reboots instead of five.
+
+    Duplicate component values are rejected when batching is enabled, as
+    staging multiple updates for the same component is unsafe with a single
+    consolidated reboot. The per-component ``wait`` argument is only
+    supported for BMC components; specifying it on a non-BMC component is
+    now rejected with ``InvalidParameterValue``.
+upgrade:
+  - |
+    Non-BMC firmware updates (BIOS, NIC) now use the unified stage-then-reboot
+    path in all modes. Operators upgrading with existing firmware update
+    templates should be aware of the following behavioural changes:
+
+    * BIOS and NIC components no longer use per-vendor reboot heuristics.
+      Every non-BMC component is staged via Redfish SimpleUpdate and then
+      rebooted, regardless of the ``allow_grouping_reboots`` setting.
+    * The per-component ``wait`` argument is now rejected for non-BMC
+      components. It was previously honoured as a post-update delay, but
+      is no longer needed: every non-BMC component now goes through the
+      stage-then-reboot path, which sequences the reboot itself. Remove
+      ``wait`` from any BIOS or NIC entries in existing templates,
+      otherwise the ``firmware.update`` step will fail validation.
+    * The NIC "stuck in STARTING" heuristic that triggered a reboot when a
+      NIC firmware task did not progress beyond the STARTING state has been
+      removed. All NICs now go through the stage-then-reboot path. The
+      ``[redfish] firmware_update_nic_starting_wait`` config option is
+      deprecated and has no effect.
+deprecations:
+  - |
+    The ``[redfish] firmware_update_nic_starting_wait`` configuration option
+    is deprecated for removal. NIC firmware updates now use the unified
+    stage-then-reboot path and no longer monitor the STARTING state. The
+    option has no effect and will be removed in a future release.

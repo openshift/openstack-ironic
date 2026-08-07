@@ -138,10 +138,9 @@ opts = [
     cfg.IntOpt('firmware_update_reboot_delay',
                min=0,
                default=300,
-               help=_('Default wait time (in seconds) for component-specific '
-                      'firmware update operations. Used for: BIOS firmware '
-                      'update wait before reboot, BMC firmware version check '
-                      'timeout, and NIC firmware task completion timeout.')),
+               help=_('Default wait time (in seconds) used as the '
+                      'power_timeout for firmware update reboots and '
+                      'the BMC firmware version check timeout.')),
     cfg.IntOpt('firmware_update_bmc_version_check_interval',
                min=0,
                default=30,
@@ -151,6 +150,10 @@ opts = [
     cfg.IntOpt('firmware_update_nic_starting_wait',
                min=0,
                default=30,
+               deprecated_for_removal=True,
+               deprecated_reason=_('NIC firmware updates now use the unified '
+                                   'stage-then-reboot path and no longer '
+                                   'monitor the STARTING state.'),
                help=_('Time (in seconds) to wait for a NIC firmware update '
                       'task to progress beyond the STARTING state before '
                       'triggering a reboot. Some NICs need a reboot to '
