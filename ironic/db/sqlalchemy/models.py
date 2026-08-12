@@ -542,6 +542,9 @@ class NodeHistory(Base):
     user = Column(String(64), nullable=True)
     project = Column(String(80), nullable=True)
     node_id = Column(Integer, ForeignKey('nodes.id'), nullable=True)
+    state = Column(String(255), nullable=True)
+    target_provision_state = Column(String(255), nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
 
 
 class NodeInventory(Base):
@@ -570,6 +573,9 @@ class FirmwareComponent(Base):
     initial_version = Column(String(255), nullable=False)
     current_version = Column(String(255), nullable=True)
     last_version_flashed = Column(String(255), nullable=True)
+    vendor = Column(String(255), nullable=True)
+    model = Column(String(255), nullable=True)
+    serial_number = Column(String(255), nullable=True)
 
 
 class Runbook(Base):
