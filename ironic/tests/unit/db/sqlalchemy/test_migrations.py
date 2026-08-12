@@ -1399,6 +1399,23 @@ class MigrationCheckersMixin(object):
         self.assertIsInstance(node_history.c.user.type,
                               sqlalchemy.types.String)
 
+    def _check_9fb44677ef15(self, engine, data):
+        node_history = db_utils.get_table(engine, 'node_history')
+        col_names = [column.name for column in node_history.c]
+
+        expected_names = ['version', 'created_at', 'updated_at', 'id', 'uuid',
+                          'conductor', 'event_type', 'severity', 'event',
+                          'user', 'node_id', 'project', 'state',
+                          'target_provision_state', 'duration_seconds']
+        self.assertEqual(sorted(expected_names), sorted(col_names))
+
+        self.assertIsInstance(node_history.c.state.type,
+                              sqlalchemy.types.String)
+        self.assertIsInstance(node_history.c.target_provision_state.type,
+                              sqlalchemy.types.String)
+        self.assertIsInstance(node_history.c.duration_seconds.type,
+                              sqlalchemy.types.Integer)
+
     def _check_0ac0f39bc5aa(self, engine, data):
         node_inventory = db_utils.get_table(engine, 'node_inventory')
         col_names = [column.name for column in node_inventory.c]
@@ -1546,6 +1563,19 @@ class MigrationCheckersMixin(object):
             self.migration_api.upgrade('31baaf680d2b')
             self.assertRaises(db_exc.DBMigrationError,
                               self.migration_api.create_schema)
+
+    def _check_772c0e7e8299(self, engine, data):
+        fw_information = db_utils.get_table(engine, 'firmware_information')
+        col_names = [column.name for column in fw_information.c]
+        self.assertIn('vendor', col_names)
+        self.assertIn('model', col_names)
+        self.assertIn('serial_number', col_names)
+        self.assertIsInstance(fw_information.c.vendor.type,
+                              sqlalchemy.types.String)
+        self.assertIsInstance(fw_information.c.model.type,
+                              sqlalchemy.types.String)
+        self.assertIsInstance(fw_information.c.serial_number.type,
+                              sqlalchemy.types.String)
 
     def test_upgrade_twice(self):
         with patch_with_engine(self.engine):

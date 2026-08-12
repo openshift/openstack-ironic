@@ -1044,14 +1044,14 @@ RELEASE_MAPPING = {
     # make it below. To release, we will preserve a version matching
     # the release as a separate block of text, like above.
     'master': {
-        'api': '1.113',
+        'api': '1.114',
         'rpc': '1.62',
         'networking_rpc': '1.0',
         'objects': {
             'Allocation': ['1.3', '1.2', '1.1'],
             'BIOSSetting': ['1.2', '1.1'],
             'Node': ['1.44', '1.43', '1.42', '1.41'],
-            'NodeHistory': ['1.2', '1.1', '1.0'],
+            'NodeHistory': ['1.3', '1.2', '1.1', '1.0'],
             'NodeInventory': ['1.1', '1.0'],
             'Conductor': ['1.6', '1.5', '1.4'],
             'Chassis': ['1.4', '1.3'],
@@ -1063,7 +1063,7 @@ RELEASE_MAPPING = {
             'TraitList': ['1.2', '1.1', '1.0'],
             'VolumeConnector': ['1.1', '1.0'],
             'VolumeTarget': ['1.1', '1.0'],
-            'FirmwareComponent': ['1.1', '1.0'],
+            'FirmwareComponent': ['1.2', '1.1', '1.0'],
             'Runbook': ['1.2', '1.1', '1.0'],
             'RunbookTrait': ['1.0'],
             'RunbookTraitList': ['1.0'],
