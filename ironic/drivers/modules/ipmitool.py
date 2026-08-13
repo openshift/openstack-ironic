@@ -1427,24 +1427,7 @@ class VendorPassthru(base.VendorInterface):
     def __init__(self):
         _constructor_checks(driver=self.__class__.__name__)
 
-    _send_raw_step_args = {
-        'raw_bytes': {
-            'description': (
-                'A string of raw bytes to convey the request to transmit '
-                'to the remote BMC.'
-            ),
-            'required': True
-        }
-    }
-
     @METRICS.timer('VendorPassthru.send_raw')
-    @base.service_step(priority=0,
-                       argsinfo=_send_raw_step_args)
-    @base.deploy_step(priority=0,
-                      argsinfo=_send_raw_step_args)
-    @base.clean_step(priority=0, abortable=False,
-                     argsinfo=_send_raw_step_args,
-                     requires_ramdisk=False)
     @base.passthru(['POST'],
                    description=_("Send raw bytes to the BMC. Required "
                                  "argument: 'raw_bytes' - a string of raw "
