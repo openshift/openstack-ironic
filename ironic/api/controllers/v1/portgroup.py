@@ -473,6 +473,10 @@ class PortgroupsController(pecan.rest.RestController):
         # NOTE: Remove node_id because it's an internal value and
         #    not present in the API object
         portgroup_dict.pop('node_id')
+        # NOTE: Portgroup has no real node_uuid field (only node_id), so
+        # populate it before applying the patch, otherwise a patch that sets
+        # /node_uuid is rejected as adding a new attribute.
+        portgroup_dict['node_uuid'] = rpc_node.uuid
 
         rpc_node = api_utils.authorize_node_link_patch(
             rpc_node, patch, 'node_uuid')
