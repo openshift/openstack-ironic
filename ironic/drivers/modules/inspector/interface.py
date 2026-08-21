@@ -31,39 +31,17 @@ _IRONIC_MANAGES_BOOT = 'inspector_manage_boot'
 
 def tear_down_managed_boot(task, always_power_off=False):
     errors = []
+
     ironic_manages_boot = utils.pop_node_nested_field(
         task.node, 'driver_internal_info', _IRONIC_MANAGES_BOOT)
 
     if ironic_manages_boot:
-        # If fast_track is truly active (config and agent is alive), we skip
-        # cleanup entirely to allow the ramdisk to be reused for the next
-        # operation. Similarly, if disable_power_off is set, the user wants
-        # the node to stay running, so we can't eject media from under the
-        # running OS.
-        # If neither condition applies, we must do soft power off before
-        # ejecting media to avoid filesystem corruption.
-        if cond_utils.is_fast_track(task) or task.node.disable_power_off:
-            LOG.debug('Skipping inspection cleanup for node %s (fast_track=%s,'
-                      ' disable_power_off=%s)', task.node.uuid,
-                      cond_utils.is_fast_track(task),
-                      task.node.disable_power_off)
-        else:
-            try:
-                LOG.info('Performing soft power off for node %s before '
-                         'ejecting virtual media', task.node.uuid)
-                cond_utils.node_power_action(task, states.SOFT_POWER_OFF)
-            except Exception as exc:
-                errors.append(_('unable to power off the node: %s') % exc)
-                LOG.exception('Unable to power off node %s for inspection',
-                              task.node.uuid)
-
-            try:
-                task.driver.boot.clean_up_ramdisk(task)
-            except Exception as exc:
-                errors.append(_('unable to clean up ramdisk boot: %s') % exc)
-                LOG.exception('Unable to clean up ramdisk boot for node %s',
-                              task.node.uuid)
-
+        try:
+            task.driver.boot.clean_up_ramdisk(task)
+        except Exception as exc:
+            errors.append(_('unable to clean up ramdisk boot: %s') % exc)
+            LOG.exception('Unable to clean up ramdisk boot for node %s',
+                          task.node.uuid)
         try:
             with cond_utils.power_state_for_network_configuration(task):
                 task.driver.network.remove_inspection_network(task)
