@@ -729,6 +729,11 @@ def deploying_error_handler(task, logmsg, errmsg=None, traceback=False,
                         error=True)
     node.save()
 
+    # NOTE(JayF): Unlike cleaning_error_handler, we deliberately do not call
+    # restore_interface() here. A DEPLOY FAILED node keeps the concrete
+    # interface so that a retried deploy or a tear down operates on the
+    # interface which actually ran. The original interface is restored once
+    # the node is torn down and cleaned.
     cleanup_err = None
     if clean_up:
         try:
@@ -1073,6 +1078,12 @@ def validate_port_physnet(task, port_obj):
     ironic nodes to continue to function after an upgrade to a release
     including physical network support.
 
+    When a port that has a physical network is added to a portgroup which has
+    no other member ports and no physical network of its own, the port's
+    physical network is adopted by the portgroup. This keeps the portgroup and
+    its member ports consistent rather than leaving the portgroup on physical
+    network None while it holds a member port on a real physical network.
+
     :param task: a TaskManager instance
     :param port_obj: a port object to be validated.
     :raises: Conflict if the port is a member of a portgroup which is on a
@@ -1090,6 +1101,9 @@ def validate_port_physnet(task, port_obj):
     if not (delta & {'portgroup_id', 'physical_network'}):
         return
 
+    port_physnet = (port_obj.physical_network
+                    if 'physical_network' in port_obj else None)
+
     # Determine the current physical network of the portgroup.
     pg_physnets = network.get_physnets_by_portgroup_id(task,
                                                        port_obj.portgroup_id,
@@ -1099,14 +1113,21 @@ def validate_port_physnet(task, port_obj):
         portgroup = network.get_portgroup_by_id(task, port_obj.portgroup_id)
         if portgroup and portgroup.physical_network is not None:
             pg_physnets = {portgroup.physical_network}
+        elif portgroup and port_physnet is not None:
+            # The portgroup has no other member ports and no physical network
+            # of its own. The port joining it defines the portgroup's physical
+            # network, so that the portgroup does not end up on physical
+            # network None while holding a member port on a real physical
+            # network.
+            portgroup.physical_network = port_physnet
+            portgroup.save()
+            return
         else:
             return
 
     # Check that the port has the same physical network as any existing
     # member ports.
     pg_physnet = pg_physnets.pop()
-    port_physnet = (port_obj.physical_network
-                    if 'physical_network' in port_obj else None)
     if port_physnet != pg_physnet:
         portgroup = network.get_portgroup_by_id(task, port_obj.portgroup_id)
         msg = _("Port with physical network %(physnet)s cannot become a "
@@ -2114,6 +2135,9 @@ def servicing_error_handler(task, logmsg, errmsg=None, traceback=False,
         node_power_action(task, states.POWER_OFF)
 
     node.save()
+
+    # Switch back to original interface, if necessary
+    task.driver.deploy.restore_interface(task)
 
     if set_fail_state and node.provision_state != states.SERVICEFAIL:
         task.process_event('fail')
