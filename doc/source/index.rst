@@ -46,7 +46,7 @@ recommended guide.
   * - If your goal with ironic is:
     - Start here:
   * - Understand and evaluate ironic for my organization
-    - :doc:`Technical overview </install/get_started>`
+    - :doc:`Deployment scenarios & how to choose </install/deployment-scenarios>`
   * - Install ironic standalone for a small number of nodes
     - :doc:`Standalone installation guide </install/standalone>`
   * - Use Ansible to install and configure nodes

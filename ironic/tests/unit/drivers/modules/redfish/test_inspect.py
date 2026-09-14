@@ -148,7 +148,7 @@ class RedfishInspectTestCase(db_base.DbTestCase):
 
         # PCIe device mocks
         mock_pcie_function1 = mock.Mock()
-        mock_pcie_function1.device_class = 'NetworkController'
+        mock_pcie_function1.device_class = sushy.DeviceClass.NETWORK_CONTROLLER
         mock_pcie_function1.device_id = '0x16d7'
         mock_pcie_function1.vendor_id = '0x14e4'
         mock_pcie_function1.subsystem_id = '0x1402'
@@ -156,7 +156,8 @@ class RedfishInspectTestCase(db_base.DbTestCase):
         mock_pcie_function1.revision_id = '0x01'
 
         mock_pcie_function2 = mock.Mock()
-        mock_pcie_function2.device_class = 'MassStorageController'
+        mock_pcie_function2.device_class = \
+            sushy.DeviceClass.MASS_STORAGE_CONTROLLER
         mock_pcie_function2.device_id = '0x1234'
         mock_pcie_function2.vendor_id = '0x1000'
         mock_pcie_function2.subsystem_id = None
@@ -253,7 +254,9 @@ class RedfishInspectTestCase(db_base.DbTestCase):
         self.assertEqual(expected_cpu,
                          inventory['inventory']['cpu'])
 
-        expected_disks = [{'name': 'storage-drive', 'size': '128'}]
+        expected_disks = [{'model': 'TestModel', 'name': 'storage-drive',
+                           'rotational': False, 'serial': 'SN0001', 'size':
+                           '128', 'vendor': 'TestMfg'}]
         self.assertEqual(expected_disks,
                          inventory["inventory"]['disks'])
 
@@ -842,7 +845,8 @@ class RedfishInspectTestCase(db_base.DbTestCase):
             self, mock_get_system, mock_get_enabled_macs):
         system_mock = self.init_system_mock(mock_get_system.return_value)
         mock_pcie_device = mock.Mock()
-        mock_pcie_device.pcie_functions = None
+        type(mock_pcie_device).pcie_functions = mock.PropertyMock(
+            side_effect=sushy.exceptions.MissingAttributeError)
         system_mock.pcie_devices.get_members.return_value = [mock_pcie_device]
 
         with task_manager.acquire(self.context, self.node.uuid,
@@ -860,7 +864,7 @@ class RedfishInspectTestCase(db_base.DbTestCase):
         system_mock = self.init_system_mock(mock_get_system.return_value)
         # Create a PCIe function with partial data, some fields None
         mock_pcie_function = mock.Mock()
-        mock_pcie_function.device_class = 'NetworkController'
+        mock_pcie_function.device_class = sushy.DeviceClass.NETWORK_CONTROLLER
         mock_pcie_function.device_id = '0x16d7'
         mock_pcie_function.vendor_id = None
         mock_pcie_function.subsystem_id = '0x1402'
