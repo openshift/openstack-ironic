@@ -14,6 +14,11 @@ from it. The scenarios below cover the most common patterns, though they are
 not exhaustive — your environment may not map cleanly to any one of them, and
 that is fine. Think of these as starting points, not a checklist.
 
+.. seealso::
+   For the component breakdown, logical architecture, and a step-by-step
+   walk-through of a Nova-backed OpenStack deployment, see
+   :doc:`get_started` — in particular :ref:`understanding-deployment`.
+
 Scenarios at a Glance
 =====================
 

@@ -1,6 +1,6 @@
-===========================
-Overview of Ironic
-===========================
+============================
+Technical Overview of Ironic
+============================
 
 The Bare Metal service, codenamed ``ironic``, is a collection of components
 that provides support to manage and provision physical machines.
@@ -19,7 +19,14 @@ cloud; there are doubtless many more interesting ones:
    and other regulatory requirements
 - Or, rapidly deploying a cloud infrastructure
 
-
+.. tip::
+   If you are deciding *how* to run ironic — standalone, integrated with
+   OpenStack without Nova, or as part of a full OpenStack deployment with
+   Nova — start with :doc:`deployment-scenarios`, which compares the common
+   patterns and helps you choose one. The rest of this page is a technical and
+   architectural overview of how ironic is put together; it is useful
+   background but is not required to evaluate which deployment fits your
+   organization.
 
 Bare Metal service components
 -----------------------------
@@ -147,6 +154,12 @@ diskimage-builder_
 
 Key Technologies for Bare Metal Hosting
 =======================================
+
+.. note::
+   From here on this page shifts into deeper technical detail — the protocols
+   ironic relies on and a step-by-step walk-through of a deployment. This is
+   reference material for understanding how the pieces fit together; feel free
+   to skip it when you are first getting oriented.
 
 Preboot Execution Environment (PXE)
 -----------------------------------
