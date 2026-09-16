@@ -8,6 +8,7 @@ ENV FIREFOX_USER_HOME=/home/${FIREFOX_USER}
 
 RUN apt-get update && \
     apt-get install -y \
+    curl \
     dumb-init \
     iproute2 \
     procps \
@@ -29,7 +30,7 @@ ENV APP_INFO={}
 ENV READ_ONLY=False
 ENV DEBUG=0
 ENV FIREFOX=firefox-esr
-ENV FIREFOX_CONFIG_DIR=${FIREFOX_USER_HOME}/.mozilla/firefox
+ENV FIREFOX_PROFILE_DIR=${FIREFOX_USER_HOME}/.ironic-vnc-profile
 ENV EXTENSION_PATH="/usr/lib/firefox-esr-addons/extensions/@ironic-console.openstack.org"
 
 ADD bin/* /usr/local/bin
