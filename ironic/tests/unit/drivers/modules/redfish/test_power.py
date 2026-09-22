@@ -13,8 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import time
 from unittest import mock
 
+from oslo_service import loopingcall as lc
 import sushy
 
 from ironic.common import exception
@@ -74,12 +76,13 @@ class RedfishPowerTestCase(db_base.DbTestCase):
                 mock_get_system.assert_called_once_with(task.node)
                 mock_get_system.reset_mock()
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch('time.sleep', autospec=True)
     @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
     def test_set_power_state(self, mock_get_system, mock_restore_bootdev,
-                             mock_sleep):
+                             mock_sleep, mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             expected_values = [
@@ -126,9 +129,11 @@ class RedfishPowerTestCase(db_base.DbTestCase):
                 mock_restore_bootdev.reset_mock()
                 mock_sleep.reset_mock()
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch('time.sleep', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
-    def test_set_power_state_not_reached(self, mock_get_system, mock_sleep):
+    def test_set_power_state_not_reached(self, mock_get_system, mock_sleep,
+                                         mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             self.config(power_state_change_timeout=2, group='conductor')
@@ -361,11 +366,79 @@ class RedfishPowerTestCase(db_base.DbTestCase):
             log_msg = mock_log.call_args[0][0]
             self.assertIn('Failed to refresh system state', log_msg)
 
+    @mock.patch.object(redfish_power.time, 'sleep', autospec=True)
+    @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
+                       autospec=True)
+    @mock.patch.object(redfish_utils, 'get_system', autospec=True)
+    def test_set_power_state_power_on_conflict_retry(
+            self, mock_get_system, mock_restore_bootdev, mock_sleep):
+        """POWER_ON retries a transient 409 ActionParameterValueConflict."""
+        self.config(power_on_conflict_retry_attempts=3,
+                    power_on_conflict_retry_interval=1, group='redfish')
+        fake_system = mock_get_system.return_value
+
+        mock_response = mock.Mock(status_code=409)
+        mock_response.json.return_value = {
+            'error': {
+                'message': ("The parameter 'ResetType' with the requested "
+                            "value of 'On' does not meet the constraints of "
+                            "the implementation. "
+                            "Base.1.18.ActionParameterValueConflict"),
+            }
+        }
+        conflict_409 = sushy.exceptions.HTTPError(
+            method='POST', url='test', response=mock_response)
+
+        # Rejected twice while the BMC settles, then accepted.
+        fake_system.reset_system.side_effect = [conflict_409, conflict_409,
+                                                None]
+        fake_system.power_state = sushy.SYSTEM_POWER_STATE_ON
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=False) as task:
+            task.driver.power.set_power_state(task, states.POWER_ON)
+
+        self.assertEqual(3, fake_system.reset_system.call_count)
+        fake_system.reset_system.assert_called_with(sushy.RESET_ON)
+        mock_sleep.assert_called()
+
+    @mock.patch.object(redfish_power.time, 'sleep', autospec=True)
+    @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
+                       autospec=True)
+    @mock.patch.object(redfish_utils, 'get_system', autospec=True)
+    def test_set_power_state_power_on_conflict_retry_exhausted(
+            self, mock_get_system, mock_restore_bootdev, mock_sleep):
+        """POWER_ON raises when the 409 conflict never clears."""
+        self.config(power_on_conflict_retry_attempts=2,
+                    power_on_conflict_retry_interval=1, group='redfish')
+        fake_system = mock_get_system.return_value
+
+        mock_response = mock.Mock(status_code=409)
+        mock_response.json.return_value = {
+            'error': {'message': 'Base.1.18.ActionParameterValueConflict'},
+        }
+        conflict_409 = sushy.exceptions.HTTPError(
+            method='POST', url='test', response=mock_response)
+        fake_system.reset_system.side_effect = conflict_409
+        # The node never reaches the ON state.
+        fake_system.power_state = sushy.SYSTEM_POWER_STATE_OFF
+
+        with task_manager.acquire(self.context, self.node.uuid,
+                                  shared=False) as task:
+            self.assertRaises(sushy.exceptions.HTTPError,
+                              task.driver.power.set_power_state,
+                              task, states.POWER_ON)
+
+        # 1 initial attempt + 2 retries.
+        self.assertEqual(3, fake_system.reset_system.call_count)
+        mock_sleep.assert_called()
+
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
     def test_reboot_from_power_off(self, mock_get_system,
-                                   mock_restore_bootdev):
+                                   mock_restore_bootdev, mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             system_result = [
@@ -388,11 +461,12 @@ class RedfishPowerTestCase(db_base.DbTestCase):
             mock_restore_bootdev.assert_called_once_with(
                 task.driver.management, task, system_result[0])
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
     def test_reboot_from_power_off_with_disable_power_off(
-            self, mock_get_system, mock_restore_bootdev):
+            self, mock_get_system, mock_restore_bootdev, mock_lc_sleep):
         # NOTE(dtantsur): if a node with disable_power_off is powered off, we
         # probably cannot do anything about it. This unit test is only here
         # for consistent coverage.
@@ -419,10 +493,12 @@ class RedfishPowerTestCase(db_base.DbTestCase):
             mock_restore_bootdev.assert_called_once_with(
                 task.driver.management, task, system_result[0])
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
-    def test_reboot_from_power_on(self, mock_get_system, mock_restore_bootdev):
+    def test_reboot_from_power_on(self, mock_get_system, mock_restore_bootdev,
+                                  mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             system_result = [
@@ -447,12 +523,14 @@ class RedfishPowerTestCase(db_base.DbTestCase):
             mock_restore_bootdev.assert_called_once_with(
                 task.driver.management, task, system_result[0])
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch('time.sleep', autospec=True)
     @mock.patch.object(redfish_mgmt.RedfishManagement, 'restore_boot_device',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
     def test_reboot_from_power_on_with_disable_power_off(
-            self, mock_get_system, mock_restore_bootdev, mock_sleep):
+            self, mock_get_system, mock_restore_bootdev, mock_sleep,
+            mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
             task.node.disable_power_off = True
@@ -477,10 +555,14 @@ class RedfishPowerTestCase(db_base.DbTestCase):
                 task.driver.management, task, system_result[0])
             mock_sleep.assert_called_with(15)
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
+    @mock.patch.object(time, 'sleep', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
-    def test_reboot_not_reached(self, mock_get_system):
+    def test_reboot_not_reached(self, mock_get_system, mock_sleep,
+                                mock_lc_sleep):
         with task_manager.acquire(self.context, self.node.uuid,
                                   shared=False) as task:
+            self.config(power_state_change_timeout=2, group='conductor')
             fake_system = mock_get_system.return_value
             fake_system.power_state = sushy.SYSTEM_POWER_STATE_OFF
 
@@ -490,6 +572,7 @@ class RedfishPowerTestCase(db_base.DbTestCase):
             # Asserts
             fake_system.reset_system.assert_called_once_with(sushy.RESET_ON)
             mock_get_system.assert_called_with(task.node)
+            mock_sleep.assert_called_with(0)
 
     @mock.patch.object(sushy, 'Sushy', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
@@ -508,9 +591,11 @@ class RedfishPowerTestCase(db_base.DbTestCase):
                 sushy.RESET_FORCE_OFF)
             mock_get_system.assert_called_once_with(task.node)
 
+    @mock.patch.object(lc.BackOffLoopingCall, '_sleep', autospec=True)
     @mock.patch.object(sushy, 'Sushy', autospec=True)
     @mock.patch.object(redfish_utils, 'get_system', autospec=True)
-    def test_reboot_fail_on_power_on(self, mock_get_system, mock_sushy):
+    def test_reboot_fail_on_power_on(self, mock_get_system, mock_sushy,
+                                     mock_lc_sleep):
         system_result = [
             # Initial state
             mock.Mock(power_state=sushy.SYSTEM_POWER_STATE_ON),
