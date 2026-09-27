@@ -624,9 +624,10 @@ def get_verify_ca(node, verify_ca):
     :param verify_ca: The verify_ca settings in driver_info
     :return: Updated verify_ca setting if needed
     """
-    config_group = node.driver
+    driver = node.get('driver') if isinstance(node, dict) else node.driver
+    config_group = driver
 
-    if node.driver == 'idrac':
+    if driver == 'idrac':
         config_group = 'redfish'
 
     if verify_ca is not None and verify_ca is not True:
