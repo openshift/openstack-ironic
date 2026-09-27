@@ -327,6 +327,33 @@ class StartStopTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
             mock_api_url.return_value,
             params={'ipa_debug': True})
 
+    def _del_host_with_hardware_types(self, hardware_types):
+        # NOTE: only patched around del_host, starting the service needs the
+        # real hardware types.
+        self._start_service()
+        with mock.patch.object(driver_factory, 'hardware_types',
+                               autospec=True, return_value=hardware_types):
+            self.service.del_host()
+
+    def test_del_host_shuts_down_async_sessions(self):
+        first = mock.Mock()
+        second = mock.Mock()
+        self._del_host_with_hardware_types({'first': first, 'second': second})
+        first.shutdown_async_sessions.assert_called_once_with()
+        second.shutdown_async_sessions.assert_called_once_with()
+
+    def test_del_host_async_sessions_shutdown_failure(self):
+        failing = mock.Mock()
+        failing.shutdown_async_sessions.side_effect = Exception('boom')
+        other = mock.Mock()
+        # a failing hardware type must not stop the others from shutting down,
+        # nor the rest of the shutdown
+        self._del_host_with_hardware_types({'failing': failing,
+                                            'other': other})
+        failing.shutdown_async_sessions.assert_called_once_with()
+        other.shutdown_async_sessions.assert_called_once_with()
+        self.assertFalse(self.service._started)
+
     def test_del_host_with_mdns(self):
         mock_zc = mock.Mock(spec=mdns.Zeroconf)
         self.service._zeroconf = mock_zc

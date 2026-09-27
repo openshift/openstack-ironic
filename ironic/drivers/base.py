@@ -1404,6 +1404,29 @@ class ManagementInterface(BaseInterface):
         """
         ...
 
+    def get_sensors_data_async(self, node):
+        """Collect sensor data asynchronously if supported.
+
+        If implemented, this method must be functionally equivalent to its
+        synchronous counterpart (which still **should** be present in case
+        of operator disabling asynchronous collection).
+
+        .. note::
+           The base implementation is not marked as ``async``. This is on
+           purpose, otherwise the exception won't be raised until the
+           executor runs the task. Real implementations may be marked as
+           ``async`` or return an awaitable in any other way.
+
+        :param node: the node as returned by ``Node.as_dict()`` (not a task
+            or ORM object, since tasks are not async-compatible and we must
+            prevent accidental database calls from async context).
+        :return: an awaitable that yields collected sensor data in the
+            same format as get_sensors_data().
+        :raises: NotImplementedError if asynchronous collection is not
+            supported. The exception must be raised synchronously!
+        """
+        raise NotImplementedError
+
     def inject_nmi(self, task: TaskManager):
         """Inject NMI, Non Maskable Interrupt.
 

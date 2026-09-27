@@ -33,6 +33,8 @@ from ironic.common import health_states
 from ironic.common.i18n import _
 from ironic.common import indicator_states
 from ironic.common import metrics_utils
+from ironic.common.redfish import exceptions as async_exceptions
+from ironic.common.redfish import resource as async_resource
 from ironic.common import states
 from ironic.common import utils
 from ironic.conductor import periodics
@@ -299,6 +301,129 @@ def _set_boot_device(task, system, device, persistent=False,
             task.node.save()
         else:
             raise
+
+# Mappings from Redfish JSON keys to the sensor payload emitted by the
+# synchronous path, as (json_key, payload_key, adapter) triples.
+#
+# The payload keys and value types must match what sushy produces, since
+# both paths feed the same consumers.
+#
+# Keys: sushy names the MemberId field ``identity``, not ``member_id``.
+#
+# Values: sushy coerces the numeric fields with ``int_or_none``, which
+# is ``int`` once the value is known not to be None, as
+# ``_sensor2dict_async`` guarantees before applying an adapter. Using
+# the builtin keeps the coercion identical, including raising on a value
+# sushy would reject, without reaching into sushy's internals.
+#
+# Absent fields: the synchronous ``_sensor2dict`` tests every field with
+# ``hasattr`` against a sushy resource, where all declared fields exist,
+# so a field the BMC omitted is reported as None rather than dropped.
+
+_FAN_FIELDS = (
+    ('MemberId', 'identity', None),
+    ('MaxReadingRange', 'max_reading_range', int),
+    ('MinReadingRange', 'min_reading_range', int),
+    ('Reading', 'reading', int),
+    ('ReadingUnits', 'reading_units', None),
+    ('SerialNumber', 'serial_number', None),
+    ('PhysicalContext', 'physical_context', None),
+)
+
+_TEMPERATURE_FIELDS = (
+    ('MemberId', 'identity', None),
+    ('MaxReadingRangeTemp', 'max_reading_range_temp', None),
+    ('MinReadingRangeTemp', 'min_reading_range_temp', None),
+    ('ReadingCelsius', 'reading_celsius', None),
+    ('PhysicalContext', 'physical_context', None),
+    ('SensorNumber', 'sensor_number', int),
+)
+
+# NOTE: the synchronous ``_get_sensors_power`` does not ask for the
+# identity field, so power supply payloads carry no ``identity`` key.
+# Adding one here would create the very divergence this table avoids.
+_POWER_SUPPLY_FIELDS = (
+    ('PowerCapacityWatts', 'power_capacity_watts', int),
+    ('LineInputVoltage', 'line_input_voltage', int),
+    ('LastPowerOutputWatts', 'last_power_output_watts', int),
+    ('SerialNumber', 'serial_number', None),
+)
+
+_DRIVE_FIELDS = (
+    ('Name', 'name', None),
+    ('Model', 'model', None),
+    ('CapacityBytes', 'capacity_bytes', int),
+)
+
+_STATUS_FIELDS = (
+    ('State', 'state', None),
+    ('Health', 'health', None),
+)
+
+
+def _sensor2dict_async(data, fields):
+    """Build a sensor dict from a raw JSON dict.
+
+    Unlike ``_sensor2dict`` which works with sushy resource objects,
+    this variant works with plain dicts as returned by the async
+    Redfish client. It produces the same payload keys and value
+    types as the synchronous path, including reporting a field the
+    BMC did not send as None rather than dropping the key, so that
+    consumers see one sensor format regardless of which path
+    collected it.
+
+    :param data: A dict containing the sensor data, or None.
+    :param fields: An iterable of (json_key, payload_key, adapter)
+        triples; see the field tables in this module.
+    :returns: A dict containing the sensor data.
+    """
+    result = {}
+    if not isinstance(data, dict):
+        return result
+    for json_key, payload_key, adapter in fields:
+        value = data.get(json_key)
+        if value is not None and adapter is not None:
+            value = adapter(value)
+        result[payload_key] = value
+    return result
+
+
+def _status2dict_async(data):
+    """Build the state/health part of a sensor payload.
+
+    The synchronous path reads these off the sushy ``status``
+    composite field, which is None when the BMC sends no Status
+    object at all; ``_sensor2dict`` then contributes no keys. Only
+    emit them when there is a Status to read, so the two paths agree.
+
+    :param data: the parent resource's raw JSON dict.
+    :returns: a dict with state and health, or an empty dict.
+    """
+    status = data.get('Status') if isinstance(data, dict) else None
+    if not isinstance(status, dict):
+        return {}
+    return _sensor2dict_async(status, _STATUS_FIELDS)
+
+
+def _get_sensor_drive_async(drive_data, storage_identity, system_identity):
+    """Get sensor data for a single drive from raw JSON.
+
+    :param drive_data: dict of drive JSON data.
+    :param storage_identity: Identity of the parent storage.
+    :param system_identity: Identity of the parent system.
+    :returns: tuple of (unique_name, sensor_data).
+    """
+    sensor = _sensor2dict_async(drive_data, _DRIVE_FIELDS)
+    sensor.update(_status2dict_async(drive_data))
+
+    if not sensor.get('state') and sensor.get('health'):
+        sensor['state'] = 'Enabled'
+
+    drive_name = drive_data.get('Name', 'unknown')
+    unique_name = '%s:%s@%s' % (
+        drive_name, storage_identity, system_identity)
+
+    return unique_name, sensor
 
 
 class RedfishManagement(base.ManagementInterface):
@@ -1037,6 +1162,340 @@ class RedfishManagement(base.ManagementInterface):
                       "%(node)s: %(error)s", {'node': node.uuid,
                                               'error': exc})
 
+        return simple_storage_sensors
+
+    # --- Async sensor data collection ---
+
+    def get_sensors_data_async(self, node):
+        """Collect sensor data asynchronously.
+
+        Entry point called by the conductor.  Returns a coroutine (not
+        itself ``async``) so that ``NotImplementedError`` from the base
+        class or ``parse_driver_info`` failures are raised synchronously
+        before the event loop runs.
+
+        :param node: the node as returned by ``Node.as_dict()``.
+        :returns: a coroutine that yields sensor data dict.
+        """
+        driver_info = redfish_utils.parse_driver_info(node)
+        return self._get_sensors_data_async_impl(node, driver_info)
+
+    async def _get_sensors_data_async_impl(self, node, driver_info):
+        """Async implementation of sensor data collection.
+
+        Mirrors the synchronous ``get_sensors_data`` but uses the async
+        Redfish client. The session is opened for this call alone and
+        released on the way out.
+        """
+        node_uuid = node.get('uuid')
+        sensors = collections.defaultdict(dict)
+
+        try:
+            async with redfish_utils.async_session(driver_info) as client:
+
+                system_id = driver_info.get('system_id')
+                if system_id:
+                    system = await client.resource(system_id)
+                else:
+                    systems = await client.collection('Systems')
+                    try:
+                        system = await systems.one()
+                    except async_exceptions.UnknownDefaultError:
+                        # The BMC exposes several systems (or none), so
+                        # there is nothing to default to.
+                        raise exception.FailedToGetSensorData(
+                            node=node_uuid,
+                            error=_('the BMC manages %(count)d systems, so '
+                                    'the one to collect from cannot be '
+                                    'guessed. Set '
+                                    'driver_info/redfish_system_id to the '
+                                    'path of the desired system, for '
+                                    'example /redfish/v1/Systems/1')
+                            % {'count': len(systems)})
+
+                sensors['Extra'] = {
+                    'Manufacturer': system.field('Manufacturer'),
+                    'Model': system.field('Model'),
+                    'UUID': system.field('UUID'),
+                }
+
+                chassis_data = await self._process_chassis_sensors_async(
+                    node_uuid, system)
+                sensors['Fan'].update(chassis_data['Fan'])
+                sensors['Temperature'].update(chassis_data['Temperature'])
+                sensors['Power'].update(chassis_data['Power'])
+
+                drive_data = {}
+                simple_storage_available = False
+                try:
+                    drive_data = (
+                        await self._process_simple_storage_sensors_async(
+                            node_uuid, system))
+                    simple_storage_available = True
+                except (async_exceptions.MissingAttributeError, ValueError,
+                        KeyError):
+                    pass
+
+                if not simple_storage_available:
+                    try:
+                        drive_data = (
+                            await self._process_storage_sensors_async(
+                                node_uuid, system))
+                    except (async_exceptions.MissingAttributeError,
+                            ValueError, KeyError):
+                        LOG.debug("Storage not available for node %s",
+                                  node_uuid)
+
+                sensors['Drive'].update(drive_data.get('Drive', {}))
+
+        except exception.FailedToGetSensorData:
+            # already has a message aimed at the operator
+            raise
+        except async_exceptions.ConnectionError as e:
+            raise exception.FailedToGetSensorData(
+                node=node_uuid,
+                error='Redfish connection error: %s' % e)
+        except async_exceptions.AccessError as e:
+            raise exception.FailedToGetSensorData(
+                node=node_uuid,
+                error='Redfish access error: %s' % e)
+        except async_exceptions.RedfishError as e:
+            raise exception.FailedToGetSensorData(
+                node=node_uuid,
+                error='Redfish error: %s' % e)
+        except Exception as e:
+            raise exception.FailedToGetSensorData(
+                node=node_uuid,
+                error='Unexpected error: %s' % e)
+
+        return sensors
+
+    @staticmethod
+    async def _fetch_json_async(connector, path, expand=False):
+        """Fetch a Redfish resource and return its parsed JSON body.
+
+        ``AsyncConnector.get`` returns the raw HTTP response so that
+        callers can read headers and the status code; the sensor code
+        only wants the decoded body, so go through ``AsyncResource``,
+        which parses it and turns a bad body into a Redfish exception
+        rather than a stray ``ValueError``.
+
+        :param connector: ``AsyncConnector`` to fetch with.
+        :param path: path of the resource to fetch.
+        :param expand: ask the BMC to inline subordinate resources, as
+            the synchronous path does through sushy's ``_expanded``
+            properties. A BMC may ignore it, so callers must cope with
+            getting references back anyway.
+        :returns: the resource's JSON body as a dict.
+        """
+        resource = async_resource.AsyncResource(connector, path)
+        await resource.refresh(expand=expand)
+        return resource.json
+
+    @classmethod
+    async def _fetch_subresource_async(cls, connector, parent, name, marker):
+        """Return a subordinate resource of an already fetched resource.
+
+        Returns the inlined copy when the BMC honoured ``$expand`` on the
+        parent, and fetches the resource itself when it did not, so that
+        the common case costs no extra request.
+
+        :param connector: ``AsyncConnector`` to fetch with.
+        :param parent: JSON body of the parent resource.
+        :param name: name of the subordinate resource, e.g. ``Thermal``.
+        :param marker: a field only the full resource carries, used to
+            tell an inlined resource from a bare reference to one.
+        :returns: the subordinate resource's JSON body, or None when the
+            parent does not have one.
+        """
+        sub = parent.get(name)
+        if not isinstance(sub, dict):
+            return None
+        if marker in sub:
+            return sub
+        path = sub.get('@odata.id')
+        if not path:
+            return None
+        return await cls._fetch_json_async(connector, path)
+
+    async def _process_chassis_sensors_async(self, node_uuid, system):
+        """Process chassis sensors (Fan, Temperature, Power) asynchronously.
+
+        :param node_uuid: Node UUID string for logging.
+        :param system: ``AsyncResource`` for the Redfish System.
+        :returns: dict with Fan, Temperature, and Power sensor data.
+        """
+        sensors = {'Fan': {}, 'Temperature': {}, 'Power': {}}
+
+        try:
+            chassis_links = system.field('Links/Chassis', default=[])
+            if not chassis_links:
+                LOG.debug("No chassis found for node %s", node_uuid)
+                return sensors
+
+            chassis_path = chassis_links[0].get('@odata.id')
+            if not chassis_path:
+                return sensors
+
+            # Ask for Thermal and Power inline, the way the synchronous
+            # path does through system.chassis_expanded: one request
+            # instead of three on a BMC that supports $expand.
+            chassis = await self._fetch_json_async(
+                system._connector, chassis_path, expand=True)
+            chassis_id = chassis.get('Id', chassis_path.rstrip('/').split(
+                '/')[-1])
+
+            thermal = None
+            try:
+                thermal = await self._fetch_subresource_async(
+                    system._connector, chassis, 'Thermal', 'Fans')
+            except Exception as exc:
+                LOG.debug("Failed reading thermal information for node "
+                          "%(node)s: %(error)s",
+                          {'node': node_uuid, 'error': exc})
+
+            if thermal:
+                try:
+                    fans = thermal.get('Fans', [])
+                    for fan in fans:
+                        sensor = _sensor2dict_async(fan, _FAN_FIELDS)
+                        sensor.update(_status2dict_async(fan))
+                        fan_id = fan.get(
+                            'MemberId', fan.get('Name', 'unknown'))
+                        unique_name = '%s@%s' % (fan_id, chassis_id)
+                        sensors['Fan'][unique_name] = sensor
+                except Exception as exc:
+                    LOG.debug("Failed reading fan information for node "
+                              "%(node)s: %(error)s",
+                              {'node': node_uuid, 'error': exc})
+
+                try:
+                    temperatures = thermal.get('Temperatures', [])
+                    for temp in temperatures:
+                        sensor = _sensor2dict_async(
+                            temp, _TEMPERATURE_FIELDS)
+                        sensor.update(_status2dict_async(temp))
+                        temp_id = temp.get(
+                            'MemberId', temp.get('Name', 'unknown'))
+                        unique_name = '%s@%s' % (temp_id, chassis_id)
+                        sensors['Temperature'][unique_name] = sensor
+                except Exception as exc:
+                    LOG.debug("Failed reading temperature information for "
+                              "node %(node)s: %(error)s",
+                              {'node': node_uuid, 'error': exc})
+
+            try:
+                power = await self._fetch_subresource_async(
+                    system._connector, chassis, 'Power', 'PowerSupplies')
+                if power:
+                    power_id = power.get('Id', 'Power')
+                    power_supplies = power.get('PowerSupplies', [])
+                    for ps in power_supplies:
+                        sensor = _sensor2dict_async(
+                            ps, _POWER_SUPPLY_FIELDS)
+                        sensor.update(_status2dict_async(ps))
+                        ps_id = ps.get(
+                            'MemberId', ps.get('Name', 'unknown'))
+                        unique_name = '%s:%s@%s' % (
+                            ps_id, power_id, chassis_id)
+                        sensors['Power'][unique_name] = sensor
+            except Exception as exc:
+                LOG.debug("Failed reading power information for node "
+                          "%(node)s: %(error)s",
+                          {'node': node_uuid, 'error': exc})
+
+        except Exception as exc:
+            LOG.debug("Failed reading chassis information for "
+                      "node %(node)s: %(error)s",
+                      {'node': node_uuid, 'error': exc})
+
+        return sensors
+
+    async def _process_storage_sensors_async(self, node_uuid, system):
+        """Process storage sensors (drives) asynchronously.
+
+        :param node_uuid: Node UUID string for logging.
+        :param system: ``AsyncResource`` for the Redfish System.
+        :returns: dict with Drive sensor data.
+        """
+        storage_sensors = {'Drive': {}}
+        system_identity = system.path.rstrip('/').split('/')[-1]
+
+        try:
+            storage_resource = await system.link(
+                'Storage', expand=True)
+            storage_collection = storage_resource.collection()
+            drives = {}
+
+            async for storage in storage_collection:
+                try:
+                    storage_id = storage.field('Id', default='unknown')
+                    drive_links = storage.field('Drives', default=[])
+                    for drive_ref in drive_links:
+                        if not isinstance(drive_ref, dict):
+                            continue
+                        drive_path = drive_ref.get('@odata.id')
+                        if not drive_path:
+                            continue
+                        drive_data = await self._fetch_json_async(
+                            system._connector, drive_path)
+                        unique_name, sensor = _get_sensor_drive_async(
+                            drive_data, storage_id, system_identity)
+                        drives[unique_name] = sensor
+                except Exception as drive_exc:
+                    LOG.debug("Failed to process drives from storage: %s",
+                              drive_exc)
+                    continue
+
+            storage_sensors['Drive'].update(drives)
+
+        except Exception as exc:
+            LOG.debug("Failed reading drive information for node "
+                      "%(node)s: %(error)s",
+                      {'node': node_uuid, 'error': exc})
+
+        return storage_sensors
+
+    async def _process_simple_storage_sensors_async(self, node_uuid, system):
+        """Process drive sensors from SimpleStorage asynchronously.
+
+        :param node_uuid: Node UUID string for logging.
+        :param system: ``AsyncResource`` for the Redfish System.
+        :returns: dict with Drive sensor data.
+        :raises: ValueError/KeyError if SimpleStorage is not available
+            (caller falls back to Storage).
+        """
+        simple_storage_sensors = {'Drive': {}}
+        system_identity = system.path.rstrip('/').split('/')[-1]
+
+        simple_storage_ref = system.field('SimpleStorage/@odata.id')
+        if not simple_storage_ref:
+            raise ValueError("SimpleStorage not available")
+
+        simple_storage_resource = await system.link(
+            'SimpleStorage', expand=True)
+        simple_storage_collection = simple_storage_resource.collection()
+        drives = {}
+
+        async for simple_storage in simple_storage_collection:
+            try:
+                ss_id = simple_storage.field('Id', default='unknown')
+                devices = simple_storage.field('Devices', default=[])
+                for device in devices:
+                    if not isinstance(device, dict):
+                        continue
+                    capacity = device.get('CapacityBytes')
+                    if not capacity:
+                        continue
+                    unique_name, sensor = _get_sensor_drive_async(
+                        device, ss_id, system_identity)
+                    drives[unique_name] = sensor
+            except Exception as device_exc:
+                LOG.debug("Failed to process devices from simple "
+                          "storage: %s", device_exc)
+                continue
+
+        simple_storage_sensors['Drive'].update(drives)
         return simple_storage_sensors
 
     @task_manager.require_exclusive_lock
