@@ -639,6 +639,8 @@ class PortsController(rest.RestController):
         # NOTE(lucasagomes): Remove node_id because it's an internal value and
         #    not present in the API object
         port_dict.pop('node_id', None)
+        # NOTE(dtantsur): Patch won't apply if the field does not exist.
+        port_dict['node_uuid'] = rpc_node.uuid
         # NOTE(vsaienko):
         # 1) Remove portgroup_id because it's an internal value and
         #    not present in the API object
