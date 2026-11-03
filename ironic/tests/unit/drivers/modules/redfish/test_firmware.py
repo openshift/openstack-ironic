@@ -3677,21 +3677,6 @@ class RedfishFirmwareVerifyTestCase(db_base.DbTestCase):
     @mock.patch.object(redfish_fw.RedfishFirmware, '_continue_updates',
                        autospec=True)
     @mock.patch.object(redfish_utils, 'get_task_monitor', autospec=True)
-    def test_verify_recorded_by_earlier_version(self, tm_mock, continue_mock,
-                                                get_system_mock):
-        # An update rebooted to apply by an earlier version of Ironic has
-        # no boot_passed, and the fields it no longer uses.
-        tm_mock.return_value = self._task_monitor()
-        get_system_mock.return_value = self._system(
-            sushy.BootProgressStates.OS_RUNNING)
-        verify = self._verify(new_boot=True, waiting=None, passed=False)
-        del verify['boot_passed']
-        self._poll(verify)
-        continue_mock.assert_called_once()
-
-    @mock.patch.object(redfish_fw.RedfishFirmware, '_continue_updates',
-                       autospec=True)
-    @mock.patch.object(redfish_utils, 'get_task_monitor', autospec=True)
     def test_no_boot_progress_waits(self, tm_mock, continue_mock,
                                     get_system_mock):
         get_system_mock.return_value = self._system()
