@@ -3671,7 +3671,9 @@ class ConductorManager(base_manager.BaseConductorManager):
                                    exception.NoFreePhysicalPorts,
                                    exception.PortgroupPhysnetInconsistent,
                                    exception.VifInvalidForAttach,
-                                   exception.InvalidParameterValue)
+                                   exception.InvalidParameterValue,
+                                   exception.TBNNoTraitsApplicableToNode,
+                                   exception.TBNNoPortMatchesFound)
     def vif_attach(self, context, node_id, vif_info):
         """Attach a VIF to a node
 
@@ -4136,7 +4138,10 @@ class ConductorManager(base_manager.BaseConductorManager):
             # conductors and we want to avoid deleting records for conductors
             # that may still be alive but have not updated their heartbeat
             # recently enough.
-            limit = (timeutils.utcnow() - datetime.timedelta(seconds=timeout))
+            # The object layer returns timezone-aware datetimes, so the limit
+            # must be timezone-aware as well to be comparable.
+            limit = (timeutils.utcnow(with_timezone=True)
+                     - datetime.timedelta(seconds=timeout))
             stale_conductors = self.dbapi.get_offline_conductors()
 
             # Filter by timestamp
