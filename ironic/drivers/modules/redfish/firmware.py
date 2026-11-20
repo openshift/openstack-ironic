@@ -265,7 +265,7 @@ class RedfishFirmware(base.FirmwareInterface):
                       argsinfo=_FW_SETTINGS_ARGSINFO)
     @base.clean_step(priority=0, abortable=False,
                      argsinfo=_FW_SETTINGS_ARGSINFO,
-                     requires_ramdisk=True)
+                     requires_ramdisk=False)
     @base.service_step(priority=0, abortable=False,
                        argsinfo=_FW_SETTINGS_ARGSINFO,
                        requires_ramdisk=False)
@@ -791,7 +791,7 @@ class RedfishFirmware(base.FirmwareInterface):
 
                 if consecutive_successes >= required_successes:
                     LOG.info('All tested Redfish resources stable and '
-                             ' available for node %(node)s',
+                             'available for node %(node)s',
                              {'node': node.uuid})
                     return
 
