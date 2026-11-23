@@ -713,6 +713,10 @@ class RedfishConnectionError(RedfishError):
     _msg_fmt = _("Redfish connection failed for node %(node)s: %(error)s")
 
 
+class RedfishResourceNotFound(RedfishError):
+    _msg_fmt = _("Redfish resource not found. Error: %(error)s")
+
+
 class PortgroupPhysnetInconsistent(IronicException):
     _msg_fmt = _("Port group %(portgroup)s has member ports with inconsistent "
                  "physical networks (%(physical_networks)s). All ports in a "
@@ -1014,6 +1018,13 @@ class ImageChecksumFileReadFailure(InvalidImage):
     code = http_client.SERVICE_UNAVAILABLE
 
 
+class ImageChecksumURLHostMismatch(InvalidImage):
+    """The checksum URL host does not match the image source host."""
+    _msg_fmt = _("The host of the supplied checksum URL (%(checksum_host)s) "
+                 "does not match the host of the image source "
+                 "(%(image_host)s).")
+
+
 class ParentNodeLocked(Conflict):
     _msg_fmt = _("Node %(node)s parent_node %(parent)s is presently locked "
                  "and we are unable to perform any action on it at this "
@@ -1153,11 +1164,13 @@ class TBNComparatorCollectionTypeMismatch(TraitBasedNetworkingException):
 
 class TBNNoTraitsApplicableToNode(TraitBasedNetworkingException):
     """If no traits apply to a node, then nothing can be done."""
+    code = http_client.BAD_REQUEST
     _msg_fmt = _("No Trait Based Networking traits were found which could "
                  "apply to the node %(node)s.")
 
 class TBNNoPortMatchesFound(TraitBasedNetworkingException):
     """No matching ports were found when planning the network for this node"""
+    code = http_client.BAD_REQUEST
     _msg_fmt = _("No matching ports where found when planning the networking "
                  "for node %(node)s and network %(vif_id)s")
 

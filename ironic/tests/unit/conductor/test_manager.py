@@ -29,6 +29,7 @@ import futurist
 from futurist import waiters
 from oslo_config import cfg
 import oslo_messaging as messaging
+from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from oslo_versionedobjects import base as ovo_base
 from oslo_versionedobjects import fields
@@ -47,6 +48,7 @@ from ironic.common import metrics as ironic_metrics
 from ironic.common.network import NetType
 from ironic.common import nova
 from ironic.common import states
+from ironic.common import utils as common_utils
 from ironic.conductor import cleaning
 from ironic.conductor import deployments
 from ironic.conductor import inspection
@@ -5697,6 +5699,33 @@ class VifTestCase(mgr_utils.ServiceSetUpMixin, db_base.DbTestCase):
         mock_attach.assert_called_once_with(mock.ANY, mock.ANY, self.vif)
 
     @mock.patch.object(n_flat.FlatNetwork, 'vif_attach', autospec=True)
+    def test_vif_attach_raises_tbn_no_traits_applicable(self, mock_attach,
+                                                        mock_valid):
+        mock_attach.side_effect = exception.TBNNoTraitsApplicableToNode(
+            node='fake-node')
+        node = obj_utils.create_test_node(self.context, driver='fake-hardware')
+        exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                self.service.vif_attach,
+                                self.context, node.uuid, self.vif)
+        # Compare true exception hidden by @messaging.expected_exceptions
+        self.assertEqual(exception.TBNNoTraitsApplicableToNode,
+                         exc.exc_info[0])
+        self.assertEqual(400, exc.exc_info[1].code)
+
+    @mock.patch.object(n_flat.FlatNetwork, 'vif_attach', autospec=True)
+    def test_vif_attach_raises_tbn_no_port_matches(self, mock_attach,
+                                                   mock_valid):
+        mock_attach.side_effect = exception.TBNNoPortMatchesFound(
+            node='fake-node', vif_id='fake-vif')
+        node = obj_utils.create_test_node(self.context, driver='fake-hardware')
+        exc = self.assertRaises(messaging.rpc.ExpectedException,
+                                self.service.vif_attach,
+                                self.context, node.uuid, self.vif)
+        # Compare true exception hidden by @messaging.expected_exceptions
+        self.assertEqual(exception.TBNNoPortMatchesFound, exc.exc_info[0])
+        self.assertEqual(400, exc.exc_info[1].code)
+
+    @mock.patch.object(n_flat.FlatNetwork, 'vif_attach', autospec=True)
     def test_vif_attach_raises_portgroup_physnet_inconsistent(
             self, mock_attach, mock_valid):
         mock_valid.side_effect = exception.PortgroupPhysnetInconsistent(
@@ -10376,6 +10405,39 @@ class ConductorCleanupTestCase(mgr_utils.ServiceSetUpMixin,
 
         conductor2 = self.dbapi.get_conductor('conductor-2')
         self.assertEqual('conductor-2', conductor2.hostname)
+
+    @mock.patch.object(common_utils, 'is_ironic_using_sqlite', autospec=True)
+    def test_cleanup_stale_conductors_non_sqlite(self, mock_sqlite):
+        """Test the timestamp comparison used for non-SQLite databases."""
+        mock_sqlite.return_value = False
+        self._start_service()
+
+        for hostname in ('conductor-old', 'conductor-new'):
+            self.dbapi.register_conductor({
+                'hostname': hostname,
+                'drivers': ['fake'],
+                'conductor_group': 'group1'
+            })
+            self.dbapi.touch_conductor(hostname, online=False)
+
+        old = (timeutils.utcnow(with_timezone=True)
+               - datetime.timedelta(days=30))
+        with mock.patch.object(self.dbapi, 'get_offline_conductors',
+                               return_value=['conductor-old',
+                                             'conductor-new'],
+                               autospec=True):
+            with mock.patch.object(objects.Conductor, 'get_by_hostname',
+                                   autospec=True) as mock_get:
+                mock_get.side_effect = lambda ctxt, hostname, online=None: (
+                    mock.Mock(spec=objects.Conductor,
+                              updated_at=old if hostname == 'conductor-old'
+                              else timeutils.utcnow(with_timezone=True)))
+                self.service._cleanup_stale_conductors(self.context)
+
+        self.assertRaises(exception.ConductorNotFound,
+                          self.dbapi.get_conductor, 'conductor-old',
+                          online=None)
+        self.dbapi.get_conductor('conductor-new', online=None)
 
     def test_cleanup_stale_conductors_disabled(self):
         """Test that cleanup is disabled when configured to do so."""
