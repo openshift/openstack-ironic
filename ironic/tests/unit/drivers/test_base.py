@@ -923,6 +923,12 @@ class TestManagementInterface(base.TestCase):
         self.assertRaises(exception.UnsupportedDriverExtension,
                           management.get_mac_addresses, task_mock)
 
+    def test_get_sensors_data_async_default_impl(self):
+        management = fake.FakeManagement()
+        self.assertRaises(NotImplementedError,
+                          management.get_sensors_data_async,
+                          {'uuid': 'fake-uuid'})
+
 
 class MyFirmwareInterface(driver_base.FirmwareInterface):
 

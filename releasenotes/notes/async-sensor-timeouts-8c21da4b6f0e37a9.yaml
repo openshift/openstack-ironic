@@ -1,0 +1,30 @@
+---
+fixes:
+  - |
+    Asynchronous sensor data collection is now bounded by
+    ``[sensor_data]wait_timeout``, the same setting that bounds the
+    synchronous path, and in the same way: whatever finished in time is
+    reported and the rest is dropped. Previously the asynchronous phase
+    had no bound at all, so a BMC that accepted a connection and then
+    stopped answering could hold the periodic task open for the length
+    of the connector's whole retry chain.
+  - |
+    The asynchronous Redfish client no longer collapses
+    ``[redfish]connect_timeout`` and ``[redfish]read_timeout`` into a
+    single value with ``max()``. Connecting and reading are now bounded
+    separately, as they are for sushy. Previously the larger of the two
+    was used for both, so a configured connect timeout smaller than the
+    read timeout was discarded and a BMC that dropped packets was given
+    the full read timeout on every attempt of the retry chain.
+  - |
+    The asynchronous Redfish client now honours
+    ``[redfish]connection_attempts`` and
+    ``[redfish]connection_retry_interval``, which it previously ignored
+    in favour of its own defaults, giving up on an unreachable BMC
+    sooner than the synchronous path did. Note that the asynchronous
+    client applies these to server-side errors as well as to failures
+    to connect, so raising them also makes it retry an HTTP 5xx more
+    often.
+  - |
+    A sensor collection that returns something other than a dictionary
+    no longer discards the results of the nodes collected after it.
