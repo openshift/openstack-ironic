@@ -468,17 +468,6 @@ class BaseConductorManager(object):
             self._zeroconf.close()
             self._zeroconf = None
 
-        # Let hardware types close async sessions that outlive a single task,
-        # such as cached BMC sessions. A failing hardware type is logged and
-        # never allowed to interrupt the shutdown of the others.
-        for name, hardware_type in driver_factory.hardware_types().items():
-            try:
-                hardware_type.shutdown_async_sessions()
-            except Exception as exc:
-                LOG.warning('Failed to close the async sessions of the '
-                            'hardware type %(type)s: %(error)s',
-                            {'type': name, 'error': exc})
-
         self._started = False
 
     def get_online_conductor_count(self):

@@ -83,9 +83,3 @@ class RedfishHardware(generic.GenericHardware):
             graphical_console.RedfishGraphicalConsole,
             ipmitool.IPMISocatConsole
         ] + super().supported_console_interfaces
-
-    # NOTE: shutdown_async_sessions() is deliberately not overridden.
-    # Async Redfish sessions do not outlive the call that opens them
-    # (see redfish_utils.async_session), so there is nothing left to
-    # release at shutdown. Restore the override if session caching is
-    # reinstated.

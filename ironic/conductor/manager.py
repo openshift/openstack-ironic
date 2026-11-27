@@ -40,7 +40,6 @@ conductor, such as building or tearing down the TFTP environment for a node,
 notifying Neutron of a change, etc.
 """
 
-import asyncio
 import collections
 import datetime
 import queue
@@ -52,7 +51,6 @@ import oslo_messaging as messaging
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 
-from ironic.common import async_utils
 from ironic.common import automated_clean_methods
 from ironic.common import boot_devices
 from ironic.common import driver_factory
@@ -3122,25 +3120,19 @@ class ConductorManager(base_manager.BaseConductorManager):
             filters['provision_state'] = states.ACTIVE
 
         started = time.time()
-        sync_nodes = queue.Queue()
-        async_tasks = []
-
+        nodes = queue.Queue()
         for node_info in self.iter_nodes(fields=['instance_uuid'],
                                          filters=filters):
-            sensor_task = self._schedule_sensor_collection(
-                context, node_info, sync_nodes)
-            if sensor_task is not None:
-                async_tasks.append(sensor_task)
+            nodes.put_nowait(node_info)
 
-        # Run synchronous path (existing logic)
         number_of_threads = min(CONF.sensor_data.workers,
-                                sync_nodes.qsize())
+                                nodes.qsize())
         futures = []
         for thread_number in range(number_of_threads):
             try:
                 futures.append(
                     self._spawn_worker(self._sensors_nodes_task,
-                                       context, sync_nodes))
+                                       context, nodes))
             except exception.NoFreeConductorWorker:
                 LOG.warning("There is no more conductor workers for "
                             "task of sending sensors data. %(workers)d "
@@ -3148,149 +3140,21 @@ class ConductorManager(base_manager.BaseConductorManager):
                             {'workers': thread_number})
                 break
 
-        # Run asynchronous path
-        if async_tasks:
-            try:
-                # Bounded by the same setting as the synchronous path,
-                # and in the same spirit: whatever finished in time is
-                # reported, and the stragglers are dropped rather than
-                # allowed to hold the periodic open indefinitely. A BMC
-                # that accepts a connection and then goes quiet would
-                # otherwise occupy its slot for the connector's whole
-                # retry chain, several minutes per request.
-                sensor_results = asyncio.run(
-                    async_utils.gather_with_keys(
-                        async_tasks,
-                        limit=CONF.sensor_data.async_workers,
-                        timeout=CONF.sensor_data.wait_timeout))
-                self._process_async_sensor_results(context, sensor_results)
-            except Exception as e:
-                LOG.warning(
-                    "Async sensor data collection failed: %(error)s",
-                    {'error': e})
-
         done, not_done = waiters.wait_for_all(
             futures, timeout=CONF.sensor_data.wait_timeout)
         if not_done:
             LOG.warning("%d workers for send sensors data did not complete",
                         len(not_done))
         runtime = time.time() - started
-        LOG.debug('Completed sending sensor data, evaluated %d sync '
-                  'nodes with %d workers and %d async nodes in '
-                  '%.2f seconds',
-                  sync_nodes.qsize() + len(done), number_of_threads,
-                  len(async_tasks), runtime)
+        LOG.debug('Completed sending sensor data, evaluated %d '
+                  'nodes with %d workers in %.2f seconds',
+                  len(done), number_of_threads, runtime)
         if runtime > (3 * CONF.sensor_data.interval):
             LOG.warning('The sensor data collection runtime is '
                         '3x the [sensor_data]interval setting. '
                         'Please consider tuning the [sensor_data]'
                         'workers setting or adding additional '
                         'conductors to the ironic deployment.')
-
-    def _schedule_sensor_collection(self, context, node_info, sync_nodes):
-        """Schedule sensor data collection for a node, on either path.
-
-        This is where a node is routed, and every node goes through it.
-        Collection is started asynchronously when the deployment asked
-        for it and the node's management interface can do it. Otherwise
-        the node is put on ``sync_nodes`` for the synchronous path --
-        because asynchronous collection is switched off, because the
-        interface does not implement it, or because the node could not
-        be locked just now. Nodes that must not be collected at all this
-        cycle, such as ones in maintenance, reach neither path.
-
-        :param context: request context.
-        :param node_info: a node record as returned by ``iter_nodes``.
-        :param sync_nodes: queue of nodes for the synchronous path.
-        :returns: a (node dict, awaitable) tuple if asynchronous
-            collection was started, None if the node was skipped or
-            queued for the synchronous path.
-        """
-        if not CONF.sensor_data.enable_async_collection:
-            sync_nodes.put_nowait(node_info)
-            return None
-
-        node_uuid = node_info[0]
-        try:
-            lock_purpose = 'getting async sensors data'
-            with task_manager.acquire(context, node_uuid, shared=True,
-                                      purpose=lock_purpose) as task:
-                if task.node.maintenance:
-                    LOG.debug('Skipping sending sensors data for node '
-                              '%s as it is in maintenance mode',
-                              task.node.uuid)
-                    return None
-
-                node_dict = task.node.as_dict()
-                try:
-                    fut = task.driver.management.get_sensors_data_async(
-                        node_dict)
-                except (NotImplementedError, AttributeError):
-                    LOG.debug('Node %(node)s does not support async sensor '
-                              'data collection, falling back to synchronous '
-                              'path.', {'node': node_uuid})
-                else:
-                    LOG.debug('Node %(node)s queued for async sensor data '
-                              'collection.', {'node': node_uuid})
-                    return node_dict, fut
-        except exception.NodeNotFound:
-            LOG.warning("During send_sensor_data, node %(node)s was not "
-                        "found and presumed deleted by another process.",
-                        {'node': node_uuid})
-            return None
-        except Exception as e:
-            LOG.warning("Failed to acquire node %(node)s for async sensor "
-                        "data, falling back to synchronous path. "
-                        "Error: %(error)s",
-                        {'node': node_uuid, 'error': e})
-
-        sync_nodes.put_nowait(node_info)
-        return None
-
-    def _process_async_sensor_results(self, context, results):
-        """Process results from async sensor data collection.
-
-        Builds notification messages and sends them via the notifier,
-        mirroring the per-node logic in ``_sensors_nodes_task``.
-
-        :param context: request context.
-        :param results: list of (node_dict, result_or_exception) tuples.
-        """
-        for node_dict, result in results:
-            node_uuid = node_dict['uuid']
-            node_name = node_dict.get('name')
-            driver = node_dict['driver']
-            instance_uuid = node_dict.get('instance_uuid')
-
-            # Test for what is usable rather than for what failed. An
-            # awaitable cancelled by the timeout comes back as
-            # CancelledError, which is a BaseException and would slip
-            # past a check for Exception; so would an interface that
-            # returned None or a list. Any of those reaching
-            # _filter_out_unsupported_types raises AttributeError and
-            # abandons the results of every node after this one.
-            if not isinstance(result, dict):
-                LOG.warning(
-                    "Failed to get async sensor data for node %(node)s. "
-                    "Error: %(error)s",
-                    {'node': node_uuid, 'error': result})
-                continue
-
-            ev_type = 'hardware.{driver}.metrics'.format(driver=driver)
-            message = {
-                'message_id': uuidutils.generate_uuid(),
-                'instance_uuid': instance_uuid,
-                'node_uuid': node_uuid,
-                'node_name': node_name,
-                'timestamp': timeutils.utcnow(),
-                'event_type': ev_type + '.update',
-            }
-
-            message['payload'] = (
-                self._filter_out_unsupported_types(result))
-            if message['payload']:
-                self.sensors_notifier.info(
-                    context, ev_type, message)
 
     def _filter_out_unsupported_types(self, sensors_data):
         """Filters out sensor data types that aren't specified in the config.
@@ -4742,7 +4606,9 @@ def do_sync_power_state(task, count):
     max_retries = CONF.conductor.power_state_sync_max_retries
 
     def _clear_last_error_if_needed(node, reason):
-        if CONF.conductor.node_history and node.last_error:
+        # A power interface that cannot sync power has confirmed nothing.
+        if (CONF.conductor.node_history and node.last_error
+                and task.driver.power.supports_power_sync(task)):
             LOG.info("Clearing last_error for node %(node)s after %(reason)s.",
                      {'node': node.uuid, 'reason': reason})
             node.last_error = None

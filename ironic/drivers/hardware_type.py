@@ -134,19 +134,6 @@ class AbstractHardwareType(abc.ABC):
         """List of supported firmware interfaces."""
         return [noop.NoFirmware]
 
-    def shutdown_async_sessions(self) -> None:
-        """Close the async sessions held by this hardware type.
-
-        Called once per enabled hardware type when the conductor shuts
-        down, giving a hardware type the chance to release sessions that
-        outlive a single task, such as cached BMC sessions.
-
-        Implementations must not raise; the conductor logs and continues
-        shutting down if they do. They must also tolerate being called when
-        nothing was ever opened, and being called more than once (several
-        hardware types may share the same underlying sessions).
-        """
-
     def get_properties(self) -> dict[str, Any]:
         """Get the properties of the hardware type.
 

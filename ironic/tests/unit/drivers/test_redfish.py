@@ -20,7 +20,6 @@ from ironic.drivers.modules.redfish import boot as redfish_boot
 from ironic.drivers.modules.redfish import inspect as redfish_inspect
 from ironic.drivers.modules.redfish import management as redfish_mgmt
 from ironic.drivers.modules.redfish import power as redfish_power
-from ironic.drivers import redfish
 from ironic.tests.unit.db import base as db_base
 from ironic.tests.unit.objects import utils as obj_utils
 
@@ -51,11 +50,3 @@ class RedfishHardwareTestCase(db_base.DbTestCase):
             self.assertIsInstance(task.driver.deploy, agent.AgentDeploy)
             self.assertIsInstance(task.driver.console, noop.NoConsole)
             self.assertIsInstance(task.driver.raid, noop.NoRAID)
-
-    def test_shutdown_async_sessions(self):
-        """Nothing is held open, so the base no-op is enough.
-
-        Async Redfish sessions live only for the call that opens them,
-        so there is no cache to drain at conductor shutdown.
-        """
-        redfish.RedfishHardware().shutdown_async_sessions()

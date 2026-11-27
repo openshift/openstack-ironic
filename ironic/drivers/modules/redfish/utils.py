@@ -15,7 +15,6 @@
 #    under the License.
 
 import collections
-import contextlib
 import enum
 import hashlib
 import os
@@ -30,7 +29,6 @@ import tenacity
 
 from ironic.common import exception
 from ironic.common.i18n import _
-from ironic.common import redfish as async_redfish
 from ironic.common import utils as common_utils
 from ironic.conf import CONF
 from ironic.drivers import utils as driver_utils
@@ -191,10 +189,10 @@ def get_component_type(component):
     return None
 
 
-def _parse_tls_settings(node_uuid, driver_info):
+def _parse_tls_settings(node, driver_info):
     """Parse TLS hardening settings from driver_info with config fallback.
 
-    :param node_uuid: UUID of the node, for error messages.
+    :param node: an Ironic node object
     :param driver_info: the node's driver_info dict
     :returns: dictionary of TLS-related sushy parameters
     :raises: InvalidParameterValue on invalid tls_minimum_version
@@ -208,7 +206,7 @@ def _parse_tls_settings(node_uuid, driver_info):
               'driver_info/redfish_tls_minimum_version on node '
               '%(node)s. The value should be one of '
               '"1.1", "1.2", or "1.3".') %
-            {'value': tls_min, 'node': node_uuid})
+            {'value': tls_min, 'node': node.uuid})
 
     tls_ciphers = driver_info.get(
         'redfish_tls_ciphers',
@@ -225,25 +223,18 @@ def _parse_tls_settings(node_uuid, driver_info):
 def parse_driver_info(node):
     """Parse the information required for Ironic to connect to Redfish.
 
-    :param node: an Ironic node object, or its dict representation as
-        returned by ``Node.as_dict()``. Asynchronous callers have to pass
-        the dict, since ORM objects are not safe to touch from an event
-        loop.
+    :param node: an Ironic node object
     :returns: dictionary of parameters
     :raises: InvalidParameterValue on malformed parameter(s)
     :raises: MissingParameterValue on missing parameter(s)
     """
-    if not isinstance(node, dict):
-        node = node.as_dict()
-
-    node_uuid = node.get('uuid')
-    driver_info = node.get('driver_info') or {}
+    driver_info = node.driver_info or {}
     missing_info = [key for key in REQUIRED_PROPERTIES
                     if not driver_info.get(key)]
     if missing_info:
         raise exception.MissingParameterValue(_(
             'Missing the following Redfish properties in node '
-            '%(node)s driver_info: %(info)s') % {'node': node_uuid,
+            '%(node)s driver_info: %(info)s') % {'node': node.uuid,
                                                  'info': missing_info})
 
     # Validate the Redfish address
@@ -258,7 +249,7 @@ def parse_driver_info(node):
         raise exception.InvalidParameterValue(
             _('Invalid Redfish address %(address)s set in '
               'driver_info/redfish_address on node %(node)s') %
-            {'address': address, 'node': node_uuid})
+            {'address': address, 'node': node.uuid})
 
     if not parsed.scheme or not parsed.authority:
         address = 'https://%s' % address
@@ -274,7 +265,7 @@ def parse_driver_info(node):
         raise exception.InvalidParameterValue(
             _('Invalid Redfish address %(address)s set in '
               'driver_info/redfish_address on node %(node)s') %
-            {'address': address, 'node': node_uuid})
+            {'address': address, 'node': node.uuid})
     address = '{}://{}'.format(parsed.scheme, parsed.authority)
 
     # Obtain the Redfish root prefix from the address path
@@ -292,7 +283,7 @@ def parse_driver_info(node):
                   'The value should be a path (string) to the resource '
                   'that the driver will interact with. For example: '
                   '/redfish/v1/Systems/1') %
-                {'value': driver_info['redfish_system_id'], 'node': node_uuid})
+                {'value': driver_info['redfish_system_id'], 'node': node.uuid})
 
     # Check if verify_ca is a Boolean or a file/directory in the file-system
     verify_ca = driver_utils.get_verify_ca(
@@ -309,7 +300,7 @@ def parse_driver_info(node):
                       'redfish_verify_ca on node %(node)s. '
                       'The value should be a Boolean or the path '
                       'to a file/directory, not "%(value)s"'
-                      ) % {'value': verify_ca, 'node': node_uuid})
+                      ) % {'value': verify_ca, 'node': node.uuid})
     elif isinstance(verify_ca, bool):
         # If it's a boolean it's grand, we don't need to do anything
         pass
@@ -318,7 +309,7 @@ def parse_driver_info(node):
             _('Invalid value type set in driver_info/redfish_verify_ca '
               'on node %(node)s. The value should be a Boolean or the path '
               'to a file/directory, not "%(value)s"') % {'value': verify_ca,
-                                                         'node': node_uuid})
+                                                         'node': node.uuid})
 
     auth_type = driver_info.get('redfish_auth_type', CONF.redfish.auth_type)
     if auth_type not in ('basic', 'session', 'auto'):
@@ -326,7 +317,7 @@ def parse_driver_info(node):
             _('Invalid value "%(value)s" set in '
               'driver_info/redfish_auth_type on node %(node)s. '
               'The value should be one of "basic", "session" or "auto".') %
-            {'value': auth_type, 'node': node_uuid})
+            {'value': auth_type, 'node': node.uuid})
 
     sushy_params = {'address': address,
                     'system_id': redfish_system_id,
@@ -334,10 +325,10 @@ def parse_driver_info(node):
                     'password': driver_info.get('redfish_password'),
                     'verify_ca': verify_ca,
                     'auth_type': auth_type,
-                    'node_uuid': node_uuid}
+                    'node_uuid': node.uuid}
     if root_prefix:
         sushy_params['root_prefix'] = root_prefix
-    sushy_params.update(_parse_tls_settings(node_uuid, driver_info))
+    sushy_params.update(_parse_tls_settings(node, driver_info))
 
     unres_bmc_wait = driver_info.get('firmware_update_unresponsive_bmc_wait')
     if unres_bmc_wait:
@@ -448,83 +439,6 @@ class SessionCache(object):
         # at BMC. Trouble is that contemporary sushy (1.6.0) does
         # does not do that.
         cls._sessions.pop(session_key, None)
-
-
-@contextlib.asynccontextmanager
-async def async_session(driver_info):
-    """Yield an async Redfish client, closing it when the block ends.
-
-    Each call opens its own session on the BMC and releases it on the
-    way out with an HTTP DELETE. Nothing is cached between calls.
-
-    Caching these clients is not as simple as keeping them in a dict.
-    The sensor collection periodic task drives them from a fresh
-    ``asyncio.run()`` on every tick, and an ``httpx.AsyncClient`` binds
-    its pooled connections to the loop that opened them, so a client
-    held across ticks fails with "Event loop is closed" as soon as a
-    kept-alive connection is reused. Reinstating a cache means solving
-    that first, which is deliberately left to a later change rather
-    than carried here half-done.
-
-    Not caching costs a session setup and teardown per node per call.
-    Callers that collect from many nodes should bound how many run at
-    once, since BMCs cap the number of sessions open at a time.
-
-    :param driver_info: dict with Redfish connection parameters as
-        returned by ``parse_driver_info``.
-    :returns: an async context manager yielding an initialized
-        ``AsyncRedfishClient``.
-    """
-    LOG.debug('Opening async Redfish session for %(endpoint)s',
-              {'endpoint': driver_info.get('address')})
-
-    client = async_redfish.AsyncRedfishClient(
-        base_url=driver_info['address'],
-        username=driver_info.get('username'),
-        password=driver_info.get('password'),
-        verify=driver_info.get('verify_ca', True),
-        auth_type=driver_info.get('auth_type', 'auto'),
-        root_prefix=driver_info.get('root_prefix'),
-        # The two timeouts are kept apart, as they are for sushy. Folding
-        # them into one with max() meant a BMC that drops packets was
-        # given the whole read timeout to answer a connection on every
-        # attempt of the retry chain, and quietly discarded whatever
-        # [redfish]connect_timeout the operator had set.
-        default_request_timeout=CONF.redfish.read_timeout,
-        connect_timeout=CONF.redfish.connect_timeout,
-        # Honour the retry settings the operator already has, rather
-        # than leaving the async path on the connector's own defaults
-        # and giving up on an unreachable BMC sooner than the sushy
-        # path does. Minus one because the two count differently:
-        # connection_attempts is a number of attempts, where the
-        # connector takes a number of retries to make after the first
-        # one. oslo.config keeps connection_attempts at 1 or more, so
-        # this cannot go negative.
-        #
-        # Note this is wider here than it is for sushy: the async
-        # connector retries server-side errors on the same count,
-        # where [redfish]connection_attempts covers only failures to
-        # connect.
-        server_side_retries=CONF.redfish.connection_attempts - 1,
-        server_side_retries_delay=CONF.redfish.connection_retry_interval,
-    )
-
-    # __aenter__ closes the client itself if it fails part-way through,
-    # so only a successful entry leaves something to clean up here.
-    await client.__aenter__()
-    try:
-        yield client
-    finally:
-        try:
-            await client.close()
-        except Exception as exc:
-            # Releasing the BMC session is best effort. Letting this out
-            # would replace whatever the caller's block raised with a
-            # teardown error, hiding the failure that actually matters.
-            LOG.warning('Failed to close the async Redfish session for '
-                        '%(endpoint)s: %(error)s',
-                        {'endpoint': driver_info.get('address'),
-                         'error': exc})
 
 
 def get_update_service(node):
